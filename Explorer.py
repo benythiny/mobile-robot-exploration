@@ -19,6 +19,7 @@ import HexapodExplorer
 from messages import *
 
 ROBOT_SIZE = 0.3
+THREAD_SLEEP = 0.4
  
 class Explorer:
     """ Class to represent an exploration agent
@@ -27,11 +28,7 @@ class Explorer:
  
  
         """ VARIABLES
-        """
-        #occupancy grid map of the robot ... possibly extended initialization needed in case of 'm1' assignment
-        self.gridmap = OccupancyGrid()
-        self.gridmap.resolution = 0.1
- 
+        """ 
         #current frontiers
         self.frontiers = None
  
@@ -102,6 +99,7 @@ class Explorer:
         """ Mapping thread for fusing the laser scans into the grid map
         """
         while not self.stop:
+            time.sleep(THREAD_SLEEP)
             #fuse the laser scan   
             #get the current laser scan and odometry and fuse them to the map
             self.gridmap = self.explor.fuse_laser_scan(self.gridmap, self.robot.laser_scan_, self.robot.odometry_)
@@ -111,12 +109,14 @@ class Explorer:
     def planning(self):
         """ Planning thread that takes the constructed gridmap, find frontiers, and select the next goal with the navigation path  
         """
+        time.sleep(4*THREAD_SLEEP)
         while not self.stop:
+            time.sleep(THREAD_SLEEP)
             #obstacle growing
-            gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
+            #gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
  
             #frontier calculation
-            self.frontiers = self.explor.find_free_edge_frontiers(gridmap_inflated)
+            self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap)
  
             #path planning and goal selection
             odometry = self.robot.odometry_
@@ -126,15 +126,18 @@ class Explorer:
                 start = odometry.pose
                 # todo: add closest frontier search
                 end = self.frontiers[0]
-                
-                self.path = self.explor.plan_path(gridmap_inflated, start, end)
-                #self.path = self.explor.simplify_path(gridmap_inflated, self.path)
+                if self.path is None:
+                    self.path = self.explor.plan_path(self.gridmap, start, end)
+                    #self.path = self.explor.simplify_path(gridmap_inflated, self.path)
  
     def trajectory_following(self):
         """trajectory following thread that assigns new goals to the robot navigation thread
         """ 
+        time.sleep(6*THREAD_SLEEP)
         while not self.stop:
             #...
+            time.sleep(THREAD_SLEEP)
+            print("Navigation goal: ", self.robot.navigation_goal)
             if self.robot.navigation_goal is None:
                 if self.path is not None:
                     #fetch the new navigation goal
@@ -143,7 +146,10 @@ class Explorer:
                     nav_goal = self.path.poses.pop(0)
                     #give it to the robot
                     self.robot.goto(nav_goal)
-                    time.sleep(1)
+                    
+                    #print("Current self position: ", self.robot.odometry_.pose)
+                    #print("Going to: ", nav_goal)
+                    time.sleep(0.1)
             #...
  
  
@@ -154,6 +160,7 @@ if __name__ == "__main__":
     
     #start the locomotion
     ex0.start()
+    time.sleep(10*THREAD_SLEEP)
     
     #continuously plot the map, targets and plan (once per second)
     fig, ax = plt.subplots()
@@ -188,4 +195,4 @@ if __name__ == "__main__":
         plt.show()
     
         #to throttle the plotting pause for 1s
-        plt.pause(1)
+        plt.pause(THREAD_SLEEP)
