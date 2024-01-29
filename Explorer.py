@@ -39,6 +39,9 @@ class Explorer:
         #stopping condition
         self.stop = False
         
+        # define frontiers
+        self.frontiers = None
+        
         #prepare the gridmap
         self.gridmap = OccupancyGrid()
         self.gridmap.resolution = 0.1
@@ -108,10 +111,10 @@ class Explorer:
         """
         while not self.stop:
             #obstacle growing
-            #...
+            # self.gridmap_processed = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
  
             #frontier calculation
-            #...
+            self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap)
  
             #path planning and goal selection
             odometry = self.robot.odometry_
@@ -147,6 +150,12 @@ if __name__ == "__main__":
         
         #plot the map
         ex0.gridmap.plot(ax)
+        
+        if ex0.frontiers != None:
+            for frontier in ex0.frontiers: #frontiers
+                if type(frontier) != Pose:
+                    frontier = frontier[0]
+                ax.scatter(frontier.position.x, frontier.position.y,c='red')
         '''    
         #plot the gridmap
         if ex0.gridmap.data is not None:
