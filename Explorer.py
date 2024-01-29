@@ -1,56 +1,174 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
-import matplotlib.pyplot as plt
-
 import sys
-import os
-import copy
 import time
-
-import math
-import numpy as np
 import threading as thread
-
-sys.path.append('messages')
+ 
+import numpy as np
+import matplotlib.pyplot as plt
+ 
+sys.path.append('../')
 sys.path.append('hexapod_robot')
 sys.path.append('hexapod_explorer')
-
+ 
 #import hexapod robot and explorer
 import HexapodRobot 
 import HexapodExplorer
-
+ 
 #import communication messages
 from messages import *
-
+ 
 class Explorer:
+    """ Class to represent an exploration agent
+    """
     def __init__(self, robotID = 0):
+ 
+ 
+        """ VARIABLES
+        """
+        #occupancy grid map of the robot ... possibly extended initialization needed in case of 'm1' assignment
+        self.gridmap = OccupancyGrid()
+        self.gridmap.resolution = 0.1
+ 
+        #current frontiers
+        self.frontiers = None
+ 
+        #current path
+        self.path = None
+ 
+        #stopping condition
+        self.stop = False
+ 
+        """Connecting the simulator
+        """
         #instantiate the robot
         self.robot = HexapodRobot.HexapodRobot(robotID)
+        #...and the explorer used in task t1c-t1e
         self.explor = HexapodExplorer.HexapodExplorer()
-
+ 
     def start(self):
+        """ method to connect to the simulated robot and start the navigation, localization, mapping and planning
+        """
         #turn on the robot 
         self.robot.turn_on()
-
+ 
         #start navigation thread
         self.robot.start_navigation()
-
+ 
+        #start the mapping thread
+        try:
+            mapping_thread = thread.Thread(target=self.mapping)
+            mapping_thread.start() 
+        except:
+            print("Error: unable to start mapping thread")
+            sys.exit(1)
+ 
+        #start planning thread
+        try:
+            planning_thread = thread.Thread(target=self.planning)
+            planning_thread.start() 
+        except:
+            print("Error: unable to start planning thread")
+            sys.exit(1)
+ 
+        #start trajectory following
+        try:
+            traj_follow_thread = thread.Thread(target=self.trajectory_following)
+            traj_follow_thread.start() 
+        except:
+            print("Error: unable to start planning thread")
+            sys.exit(1)
+ 
     def __del__(self):
         #turn off the robot
         self.robot.stop_navigation()
         self.robot.turn_off()
-
-
+ 
+    def mapping(self):
+        """ Mapping thread for fusing the laser scans into the grid map
+        """
+        while not self.stop:
+            #fuse the laser scan   
+            laser_scan = self.robot.laser_scan_
+            #...
+ 
+    def planning(self):
+        """ Planning thread that takes the constructed gridmap, find frontiers, and select the next goal with the navigation path  
+        """
+        while not self.stop:
+            #obstacle growing
+            #...
+ 
+            #frontier calculation
+            #...
+ 
+            #path planning and goal selection
+            odometry = self.robot.odometry_
+            #...
+            self.path = Path()
+ 
+    def trajectory_following(self):
+        """trajectory following thread that assigns new goals to the robot navigation thread
+        """ 
+        '''while not self.stop:
+            #...
+            if self.robot.navigation_goal is None:
+                #fetch the new navigation goal
+                nav_goal = path_nav.pop(0)
+                #give it to the robot
+                self.robot.goto(nav_goal)
+            #...'''
+ 
+ 
 if __name__ == "__main__":
-    #instantiate the exploration agent
-    ex0 = Explorer(0)
-    #ex1 = Explorer(1)
-
-    #start the agent
+    
+    #instantiate the robot
+    ex0 = Explorer()
+    
+    #instantiate the explorer
+    expl = HexapodExplorer.HexapodExplorer()
+    robot = HexapodRobot.HexapodRobot(0)
+    
+    #turn on the robot 
+    robot.turn_on()
+ 
+    #start navigation thread
+    robot.start_navigation()
+    
+    #start the locomotion
     ex0.start()
-    #ex1.start()
-
-    #main loop
+    
+    #prepare the gridmap
+    gridmap = OccupancyGrid()
+    gridmap.resolution = 0.1
+    gridmap.width = 100
+    gridmap.height = 100
+    gridmap.origin = Pose(Vector3(-5.0,-5.0,0.0), Quaternion(1,0,0,0))
+    gridmap.data = 0.5*np.ones((gridmap.height*gridmap.width))
+ 
+    #continuously plot the map, targets and plan (once per second)
+    fig, ax = plt.subplots()
+    plt.ion()
     while(1):
-        time.sleep(1)
+        plt.cla()
+        
+        #get the current laser scan and odometry and fuse them to the map
+        gridmap = expl.fuse_laser_scan(gridmap, robot.laser_scan_, robot.odometry_)
+
+        #plot the map
+        gridmap.plot(ax)
+        '''    
+        #plot the gridmap
+        if ex0.gridmap.data is not None:
+            ex0.gridmap.plot(ax)
+        #plot the navigation path
+        if ex0.path is not None:
+            ex0.path.plot(ax)'''
+ 
+        plt.xlabel('x[m]')
+        plt.ylabel('y[m]')
+        ax.set_aspect('equal', 'box')
+        plt.show()
+    
+        #to throttle the plotting pause for 1s
+        plt.pause(1)
