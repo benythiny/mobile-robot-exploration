@@ -38,7 +38,16 @@ class Explorer:
  
         #stopping condition
         self.stop = False
- 
+        
+        #prepare the gridmap
+        self.gridmap = OccupancyGrid()
+        self.gridmap.resolution = 0.1
+        self.gridmap.width = 100
+        self.gridmap.height = 100
+        self.gridmap.origin = Pose(Vector3(-5.0,-5.0,0.0), Quaternion(1,0,0,0))
+        self.gridmap.data = 0.5*np.ones((self.gridmap.height*self.gridmap.width))
+        
+        
         """Connecting the simulator
         """
         #instantiate the robot
@@ -89,7 +98,9 @@ class Explorer:
         """
         while not self.stop:
             #fuse the laser scan   
-            laser_scan = self.robot.laser_scan_
+            #get the current laser scan and odometry and fuse them to the map
+            self.gridmap = self.explor.fuse_laser_scan(self.gridmap, self.robot.laser_scan_, self.robot.odometry_)
+ 
             #...
  
     def planning(self):
@@ -125,38 +136,17 @@ if __name__ == "__main__":
     #instantiate the robot
     ex0 = Explorer()
     
-    #instantiate the explorer
-    expl = HexapodExplorer.HexapodExplorer()
-    robot = HexapodRobot.HexapodRobot(0)
-    
-    #turn on the robot 
-    robot.turn_on()
- 
-    #start navigation thread
-    robot.start_navigation()
-    
     #start the locomotion
     ex0.start()
     
-    #prepare the gridmap
-    gridmap = OccupancyGrid()
-    gridmap.resolution = 0.1
-    gridmap.width = 100
-    gridmap.height = 100
-    gridmap.origin = Pose(Vector3(-5.0,-5.0,0.0), Quaternion(1,0,0,0))
-    gridmap.data = 0.5*np.ones((gridmap.height*gridmap.width))
- 
     #continuously plot the map, targets and plan (once per second)
     fig, ax = plt.subplots()
     plt.ion()
     while(1):
         plt.cla()
         
-        #get the current laser scan and odometry and fuse them to the map
-        gridmap = expl.fuse_laser_scan(gridmap, robot.laser_scan_, robot.odometry_)
-
         #plot the map
-        gridmap.plot(ax)
+        ex0.gridmap.plot(ax)
         '''    
         #plot the gridmap
         if ex0.gridmap.data is not None:
