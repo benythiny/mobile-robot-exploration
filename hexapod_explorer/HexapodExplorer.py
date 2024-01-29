@@ -319,10 +319,8 @@ class HexapodExplorer:
         # TODO:[project] find the information rich points in the environment
         return None
  
-    def grow_obstacles_old(self, grid_map, robot_size):
-        return grid_map
  
-    def grow_obstacles(self, grid_map, robot_size):
+    def grow_obstacles(self, grid_map_original, robot_size):
         """ Method to grow the obstacles to take into account the robot embodiment
         Args:
             grid_map: OccupancyGrid - gridmap for obstacle growing
@@ -331,6 +329,7 @@ class HexapodExplorer:
             grid_map_grow: OccupancyGrid - gridmap with considered robot body embodiment
         """
  
+        grid_map = copy.deepcopy(grid_map_original)
         h = grid_map.height
         w = grid_map.width
         res = grid_map.resolution

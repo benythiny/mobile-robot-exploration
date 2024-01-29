@@ -10,7 +10,7 @@ from messages import *
 DELTA_DISTANCE = 0.12
 C_TURNING_SPEED = 5
 C_AVOID_SPEED = 10
-ORIENTATION_THRESHOLD = math.pi / 16
+ORIENTATION_THRESHOLD = math.pi / 6
 PI = math.pi
  
  
@@ -19,87 +19,44 @@ class HexapodController:
         pass
  
     def goto(self, goal, odometry, collision):
-        """Method to steer the robot towards the goal position given its current
-           odometry and collision status
+        """
+        Method to steer the robot towards the goal position given its current 
+        odometry and collision status
+        
         Args:
             goal: Pose of the robot goal
             odometry: Perceived odometry of the robot
             collision: bool of the robot collision status
         Returns:
             cmd: Twist steering command
+        Notes:
+            gx, gy = goal.x, goal.y
+            cx, cy = odometry.position.x, odometry.position.y
+            dst_to_target = np.linalg.norm(np.array([gx,cx,gy-cy])) #((gx-cx)**2-(gy-cy)**2)**(1/2)
+            is_in_goal = dst_to_target <Constants.DELTA_DISTANCE
         """
-        # zero velocity steering command
-        cmd_msg = Twist()
- 
-        if odometry is None or goal is None or collision is None:
-            return cmd_msg
- 
-        goal_x = goal.position.x
-        goal_y = goal.position.y
- 
-        current_x = odometry.pose.position.x
-        current_y = odometry.pose.position.y
-        current_ori = odometry.pose.orientation.to_Euler()[0]  # z
- 
+        cmd_msg = Twist() # zero velocity steering command
         if collision:
-            return None
- 
-        '''
-        if abs(goal_x - current_x) < DELTA_DISTANCE and abs(goal_y - current_y) < DELTA_DISTANCE:
-            return None
-        '''
- 
-        dist_to_goal = odometry.pose.dist(goal)
- 
-        dx = goal_x - current_x
-        dy = goal_y - current_y
- 
-        # goal orientation relative
-        goal_ori_rel = math.atan2(dy, dx)
- 
-        # goal orientation absolute
-        goal_ori_abs = goal.orientation.to_Euler()[0]
- 
-        # delta angle for big distance
-        # dphi = self.get_angle_diff(goal_ori_rel, current_ori)
-        dphi = self.get_shortest_difference(goal_ori_rel, current_ori)
- 
-        if dist_to_goal < DELTA_DISTANCE:
-            # delta angle for small distance
-            # dphi_close = self.get_angle_diff(goal_ori_abs, current_ori)
-            dphi_close = self.get_shortest_difference(goal_ori_abs, current_ori)
- 
-            if abs(dphi_close) >= ORIENTATION_THRESHOLD:
-                return None
             cmd_msg.linear.x = 0
-            cmd_msg.linear.y = 0
-            cmd_msg.angular.z = C_TURNING_SPEED * dphi_close
-            return cmd_msg
- 
-        cmd_msg.linear.x = dist_to_goal
-        cmd_msg.linear.y = dist_to_goal
-        cmd_msg.angular.z = dphi * C_TURNING_SPEED
-        print("Goto message: ", cmd_msg)
-        return cmd_msg
-    
-    def get_shortest_difference(self, th1, th2):
-        # Calculate the angle difference between th1 and th2, and use modulo to ensure it's within [0, 2 * pi].
-        anglediff = (th1 - th2) % (2 * math.pi)
- 
-        # If the angle difference is negative, adjust it to be the shortest positive angle.
-        if anglediff < 0:
-            if abs(anglediff) > (2 * math.pi + anglediff):
-                anglediff = 2 * math.pi + anglediff
-        else:
-            if anglediff > abs(anglediff - 2 * math.pi):
-                anglediff = anglediff - 2 * math.pi
- 
-        return anglediff
- 
- 
-    def get_angle_diff(self, th1, th2):
-        delta = ((th2 - th1 + PI) % (2 * PI)) - PI
-        return delta
+            cmd_msg.angular.z = 0
+            return None
+        if (goal is not None) and (odometry is not None):
+            diff = goal.position-odometry.pose.position
+            dst_to_target = (diff).norm()
+            is_in_goal = dst_to_target <DELTA_DISTANCE
+            if is_in_goal:
+                return None
+            targ_h = np.arctan2(diff.y,diff.x)
+            cur_h = odometry.pose.orientation.to_Euler()[0]
+            diff_h = targ_h - cur_h
+            diff_h = (diff_h + math.pi) % (2*math.pi) - math.pi
+            if abs(diff_h) > np.pi/6:
+                cmd_msg.linear.x = 0
+                cmd_msg.angular.z = 10*C_TURNING_SPEED*diff_h
+            else:
+                cmd_msg.linear.x = dst_to_target
+                cmd_msg.angular.z = C_TURNING_SPEED*diff_h
+        return cmd_msg 
  
     def goto_reactive(self, goal, odometry, collision, laser_scan):
         """Method to steer the robot towards the goal position while avoiding

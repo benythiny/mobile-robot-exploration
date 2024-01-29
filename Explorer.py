@@ -18,8 +18,8 @@ import HexapodExplorer
 #import communication messages
 from messages import *
 
-ROBOT_SIZE = 0.3
-THREAD_SLEEP = 0.4
+ROBOT_SIZE = 0.5
+THREAD_SLEEP = 0.5
  
 class Explorer:
     """ Class to represent an exploration agent
@@ -33,7 +33,7 @@ class Explorer:
         self.frontiers = None
  
         #current path
-        self.path = None
+        self.path = Path()
  
         #stopping condition
         self.stop = False
@@ -48,6 +48,9 @@ class Explorer:
         self.gridmap.height = 100
         self.gridmap.origin = Pose(Vector3(-5.0,-5.0,0.0), Quaternion(1,0,0,0))
         self.gridmap.data = 0.5*np.ones((self.gridmap.height*self.gridmap.width))
+        
+        # map for planning with obstacles
+        self.gridmap_inflated = OccupancyGrid()
         
         
         """Connecting the simulator
@@ -112,23 +115,22 @@ class Explorer:
         time.sleep(4*THREAD_SLEEP)
         while not self.stop:
             time.sleep(THREAD_SLEEP)
-            #obstacle growing
-            #gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
  
             #frontier calculation
             self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap)
  
             #path planning and goal selection
             odometry = self.robot.odometry_
-            #...
-            # self.path = Path()
+            
             if odometry is not None and self.frontiers is not None:
                 start = odometry.pose
                 # todo: add closest frontier search
                 end = self.frontiers[0]
-                if self.path is None:
-                    self.path = self.explor.plan_path(self.gridmap, start, end)
-                    #self.path = self.explor.simplify_path(gridmap_inflated, self.path)
+                if self.path is None or len(self.path.poses) == 0:
+                    #obstacle growing
+                    self.gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
+                    self.path = self.explor.plan_path(self.gridmap_inflated, start, end)
+                    self.path = self.explor.simplify_path(self.gridmap_inflated, self.path)
  
     def trajectory_following(self):
         """trajectory following thread that assigns new goals to the robot navigation thread
@@ -137,20 +139,18 @@ class Explorer:
         while not self.stop:
             #...
             time.sleep(THREAD_SLEEP)
-            print("Navigation goal: ", self.robot.navigation_goal)
             if self.robot.navigation_goal is None:
-                if self.path is not None:
-                    #fetch the new navigation goal
-                    #nav_goal = path_nav.pop(0)
-                    
+                if self.path is not None and len(self.path.poses) > 0:
+                    #fetch the new navigation goal                    
                     nav_goal = self.path.poses.pop(0)
+                    
                     #give it to the robot
                     self.robot.goto(nav_goal)
+                    print(time.strftime("%H:%M:%S"),"Going to:")
+                    print(nav_goal)
                     
                     #print("Current self position: ", self.robot.odometry_.pose)
                     #print("Going to: ", nav_goal)
-                    time.sleep(0.1)
-            #...
  
  
 if __name__ == "__main__":
@@ -163,13 +163,16 @@ if __name__ == "__main__":
     time.sleep(10*THREAD_SLEEP)
     
     #continuously plot the map, targets and plan (once per second)
-    fig, ax = plt.subplots()
+    fig, (ax, bx) = plt.subplots(nrows=2, ncols=1, figsize=(10,15))
     plt.ion()
     while(1):
         plt.cla()
+        ax.cla()
+        bx.cla()
         
         #plot the map
         ex0.gridmap.plot(ax)
+        ex0.gridmap_inflated.plot(bx)
         
         if ex0.frontiers != None:
             for frontier in ex0.frontiers: #frontiers
@@ -177,17 +180,9 @@ if __name__ == "__main__":
                     frontier = frontier[0]
                 ax.scatter(frontier.position.x, frontier.position.y,c='red')
         
-        if ex0.path is not None: #print simple path points
+        if ex0.path is not None: #print path points
             for pose in ex0.path.poses:
-                ax.scatter(pose.position.x, pose.position.y,c='green', s=150, marker='x')
-                
-        '''    
-        #plot the gridmap
-        if ex0.gridmap.data is not None:
-            ex0.gridmap.plot(ax)
-        #plot the navigation path
-        if ex0.path is not None:
-            ex0.path.plot(ax)'''
+                ax.scatter(pose.position.x, pose.position.y,c='green', s=50, marker='x')
  
         plt.xlabel('x[m]')
         plt.ylabel('y[m]')
