@@ -3,3 +3,4 @@
 3. only show feasible frontiers
 4. fix collisions with objects that were not taken into
 consideration while planning the path
+5. stop the path if the frontier is not there anymore

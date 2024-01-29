@@ -491,36 +491,65 @@ class HexapodExplorer:
         path_simplified = Path()
         # add the start pose
         path_simplified.poses.append(path_orig.poses[0])
+        goal = path_orig.poses[-1]
+
+        idx = 0
+        map2d = grid_map.data.reshape(grid_map.height, grid_map.width)
+            
+        #iterate through the path and simplify the path
+        while not path_simplified.poses[-1] == goal: #until the goal is not reached
+            #find the connected segment
+            previous_pose = path_simplified.poses[-1]
+            
+            for pose in path_orig.poses[idx:]:
+                #if bresenham_line(path_simple[end], pose) not collide: #there is no collision
+                b_end = self.world_to_map(grid_map, np.array([pose.position.y, pose.position.x]))
+                b_start = self.world_to_map(grid_map, np.array([path_simplified.poses[-1].position.y, path_simplified.poses[-1].position.x]))
+                b_line = self.bresenham_line(b_start, b_end)
+                #collision = self.collision_on_path(grid_map, b_line)
+                
+                collision = False
+                for (y, x) in b_line: #check for collision
+                    if map2d[y,x] > 0.5: # this is correct!
+                        collision = True
+                #if collision == False or len(b_line) < 2:
+                if collision == False:
+                
+                    previous_pose = pose
+                    idx += 1
+            
+                    #the goal is reached
+                    if pose == goal: 
+                        path_simplified.poses.append(pose) 
+                        break
+            
+                else: #there is collision
+                    path_simplified.poses.append(previous_pose) 
+                    break
+            '''if len(b_line)==1 and pose != goal:
+                return None'''
+        return path_simplified
+            
+            
+    def simplify_path_old(self, grid_map, path_orig):
+        """ Method to simplify the found path on the grid
+        Args:
+            grid_map: OccupancyGrid - gridmap for obstacle growing
+            path: Path - path to be simplified
+        Returns:
+            path_simple: Path - simplified path
+        """
+        if grid_map is None or path_orig is None:
+            return None
+ 
+        path_simplified = Path()
+        # add the start pose
+        path_simplified.poses.append(path_orig.poses[0])
  
         # iterate through the path and simplify the path
         goal = path_orig.poses[-1]
         previous_pose = path_orig.poses[0]
         previos_outer_pose = path_orig.poses[0]
-        '''
-        end = False
-        idx = 1
-        while not end:
-            rest_of_path = path_orig.poses[idx: ]
-            for new_pose in rest_of_path:
-                b_end = self.world_to_map(grid_map, np.array([new_pose.position.y, new_pose.position.x]))
-                b_start = self.world_to_map(grid_map, np.array([previos_outer_pose.position.y, previos_outer_pose.position.x]))
-                b_line = self.bresenham_line(b_start, b_end)
- 
-                collision = self.collision_on_path(grid_map, b_line)
-                if not collision:
-                    previous_pose = new_pose
- 
-                    if previous_pose == goal:
-                        end = True
-                else:
-                    path_simplified.poses.append(previous_pose)
-                    #previous_pose = new_pose
-                    previos_outer_pose = new_pose
-                    break
-                idx += 1
-        path_simplified.poses.append(goal)
-        return path_simplified
-        '''
  
         for new_pose in path_orig.poses[1:]:
             b_end = self.world_to_map(grid_map, np.array([new_pose.position.y, new_pose.position.x]))

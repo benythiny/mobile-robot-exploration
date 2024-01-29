@@ -138,7 +138,11 @@ class Explorer:
                 if len(self.frontiers) > 0:
                     end = self.frontiers[0]
                     self.path = self.explor.plan_path(self.gridmap_inflated, start, end) 
-                    self.path = self.explor.simplify_path(self.gridmap_inflated, self.path)
+                    simple_path = self.explor.simplify_path(self.gridmap_inflated, self.path)
+                    print("Path was simplified")
+                    if simple_path != None:
+                        print("... and its not None")
+                        self.path = simple_path
                 else: 
                     # if list is empty, return the app - no more frontiers
                     print("No frontiers detected. Terminating the script.")
