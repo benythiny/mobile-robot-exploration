@@ -90,8 +90,8 @@ class HexapodExplorer:
  
         # 1. Project the laser scan points to x,y plane with respect to the robot heading
         # + 2. Compensate for the robot odometry
-        xy_projections[:, 0] = current_x + distances * np.sin(current_ori + obs_angles)
-        xy_projections[:, 1] = current_y + distances * np.cos(current_ori + obs_angles)
+        xy_projections[:, 1] = current_x + distances * np.cos(current_ori + obs_angles)
+        xy_projections[:, 0] = current_y + distances * np.sin(current_ori + obs_angles)
  
         # 3. Transfer the points from the world coordinates to the map coordinates
         '''
@@ -118,7 +118,7 @@ class HexapodExplorer:
  
         # 4.
         # get the position of the robot in the map coordinates
-        odom_map = self.world_to_map(grid_map, np.array([current_x, current_y]))
+        odom_map = self.world_to_map(grid_map, np.array([current_y, current_x]))
  
         free_points = []
         occupied_points = []
@@ -127,9 +127,10 @@ class HexapodExplorer:
             pt = tuple(pt)
             # raytrace the points
             pts = self.bresenham_line(odom_map, pt)
+            #TODO: add check that there are no collisions in the line
  
             # save the coordinate of free space cells
-            free_points.extend(pts)
+            free_points.extend(pts[:-1])
             # save the coordinate of occupied cell
             occupied_points.append(pt)
         unique_free_point = list(set(free_points))
@@ -173,7 +174,7 @@ class HexapodExplorer:
         else:
             p = 0.95
         return p
- 
+    
     def world_to_map(self, grid_map, world_coords):
         resolution = grid_map.resolution
  
@@ -449,7 +450,7 @@ class HexapodExplorer:
             return None
         else:
             for point in found_path:
-                [new_x, new_y] = self.map_to_world(grid_map, point)
+                [new_x, new_y] = self.map_to_world(grid_map, np.array(point))
                 new_point = Pose(Vector3(new_y, new_x, 0), Quaternion(0, 0, 0, 0))
                 path.poses.append(new_point)
         #path.poses[0] = goal
@@ -459,83 +460,7 @@ class HexapodExplorer:
  
         return path
  
-    '''
-    def plan_path(self, grid_map, start, goal):
-        """ Method to plan the path from start to the goal pose on the grid
-        Args:
-            grid_map: OccupancyGrid - gridmap for obstacle growing
-            start: Pose - robot start pose
-            goal: Pose - robot goal pose
-        Returns:
-            path: Path - path between the start and goal Pose on the map
-        """
- 
-        h = grid_map.height
-        w = grid_map.width
-        res = grid_map.resolution
- 
-        path = Path()
-        # Add the start pose
-        path.poses.append(start)
- 
-        # Convert the grid_map data to a NumPy array
-        grid_data = grid_map.data.reshape((h, w))
- 
-        # Define 8 possible movement directions (8-neighborhood)
-        directions = [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (-1, -1), (1, -1)]
- 
-        # Create a list of open cells to explore
-        [x, y] = self.world_to_map(grid_map, np.array([start.position.x, start.position.y]))
-        x = int(x)
-        y = int(y)
-        open_cells = [(0, (x, y))]
-        # Create a dictionary to store the cost to reach each cell
-        cell_costs = {start: 0}
- 
-        goal_pose = tuple(self.world_to_map(grid_map, np.array([goal.position.x, goal.position.y])))
- 
-        while open_cells:
-            # Get the cell with the lowest cost from the open_cells list
-            cost, current = heappop(open_cells)
- 
-            # Check if we have reached the goal
-            if current == goal_pose:
-                # Reconstruct the path
-                path.poses = [start]  # Reset the path
-                while current in cell_costs:
-                    path.poses.append(current)
-                    current = cell_costs[current][1]  # Get the previous cell
-                path.poses.append(goal)
- 
-                return path
- 
-            # Explore neighboring cells
-            for dx, dy in directions:
-                # [x, y] = self.world_to_map(grid_map, np.array([current.position.x + dx*res, current.position.y + dy*res]))
-                x = current[0]
-                y = current[1]
- 
-                # neighbor = Pose(Vector3(current.position.x + dx * res, current.position.y + dy * res, 0), Quaternion(0, 0, 0, 0))
-                neighbor = (x, y)
-                if 0 <= x < w and 0 <= y < h and grid_data[y][x] == 0:
-                    # Calculate the cost to reach the neighbor
-                    neighbor_cost = cell_costs[current][0] + 1  # Assuming uniform cost
- 
-                    if neighbor not in cell_costs or neighbor_cost < cell_costs[neighbor][0]:
-                        cell_costs[neighbor] = (neighbor_cost, current)
-                        heappush(open_cells, (neighbor_cost + self.heuristic(neighbor, goal), neighbor))
- 
-        # If no path is found, return None
-        return None
- 
- 
-    def heuristic(self, current, goal):
-        """ A simple Euclidean distance heuristic for A* """
-        return np.linalg.norm(
-            np.array([current.position.x, current.position.y]) - np.array([goal.position.x, goal.position.y]))
-    '''
- 
- 
+
     def collision_on_path(self, map, line):
         h = map.height
         w = map.width
@@ -614,30 +539,7 @@ class HexapodExplorer:
         path_simplified.poses.append(goal)
         return path_simplified
  
-    '''
-        while previous_pose != goal:  # until the goal is not reached
-            # find the connected segment
-            idx = 1
-            for new_pose in path_orig.poses[idx:]:
-                b_end = self.world_to_map(grid_map, np.array([new_pose.position.y, new_pose.position.x]))
-                b_start = self.world_to_map(grid_map, np.array([previous_pose.position.y, previous_pose.position.x]))
-                b_line = self.bresenham_line(b_start, b_end)
-                collision = self.collision_on_path(grid_map, b_line)
-                if not collision:
-                    previous_pose = new_pose
-                    # if the goal is reached
-                    if new_pose == goal:
-                        path_simplified.poses.append(new_pose)
-                        break
-                else:  # there is collision
-                    path_simplified.poses.append(previous_pose)
-                    break
-                # previous_pose = path_simplified.poses[i]
-                # i+=1
-            idx += 1
-            previous_pose = path_simplified.poses[-1]
-    '''
- 
+
  
     ###########################################################################
     # INCREMENTAL Planner
@@ -746,137 +648,3 @@ def astar(array, start, goal):
     return None
  
  
-'''
-class Node:
-    """
-    A node class for A* Pathfinding
-    """
- 
-    def __init__(self, parent=None, position=None):
-        self.parent = parent
-        self.position = position
- 
-        self.g = 0
-        self.h = 0
-        self.f = 0
- 
-    def __eq__(self, other):
-        return self.position == other.position
- 
- 
-def return_path(current_node):
-    path = []
-    current = current_node
-    while current is not None:
-        path.append(current.position)
-        current = current.parent
-    return path[::-1]  # Return reversed path
- 
- 
-def astar(maze, start, end, allow_diagonal_movement=False):
-    """
-    Returns a list of tuples as a path from the given start to the given end in the given maze
-    :param maze:
-    :param start:
-    :param end:
-    :param allow_diagonal_movement: do we allow diagonal steps in our path
-    :return:
-    """
- 
-    # Create start and end node
-    start_node = Node(None, start)
-    start_node.g = start_node.h = start_node.f = 0
-    end_node = Node(None, end)
-    end_node.g = end_node.h = end_node.f = 0
- 
-    # Initialize both open and closed list
-    open_list = []
-    closed_list = []
- 
-    # Add the start node
-    open_list.append(start_node)
- 
-    # Adding a stop condition
-    outer_iterations = 0
-    max_iterations = (len(maze) // 2) ** 2
- 
-    # what squares do we search
-    adjacent_squares = ((0, -1), (0, 1), (-1, 0), (1, 0),)
-    if allow_diagonal_movement:
-        adjacent_squares = ((0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1),)
- 
-    # Loop until you find the end
-    while len(open_list) > 0:
-        outer_iterations += 1
- 
-        # Get the current node
-        current_node = open_list[0]
-        current_index = 0
-        for index, item in enumerate(open_list):
-            if item.f < current_node.f:
-                current_node = item
-                current_index = index
- 
-        if outer_iterations > max_iterations:
-            # if we hit this point return the path such as it is
-            # it will not contain the destination
-            warn("giving up on pathfinding too many iterations")
-            return return_path(current_node)
- 
-        # Pop current off open list, add to closed list
-        open_list.pop(current_index)
-        closed_list.append(current_node)
- 
-        # Found the goal
-        if current_node == end_node:
-            return return_path(current_node)
- 
-        # Generate children
-        children = []
- 
-        for new_position in adjacent_squares:  # Adjacent squares
- 
-            # Get node position
-            node_position = (current_node.position[0] + new_position[0], current_node.position[1] + new_position[1])
- 
-            # Make sure within range
-            within_range_criteria = [
-                node_position[0] > (len(maze) - 1),
-                node_position[0] < 0,
-                node_position[1] > (len(maze[len(maze) - 1]) - 1),
-                node_position[1] < 0,
-            ]
- 
-            if any(within_range_criteria):
-                continue
- 
-            # Make sure walkable terrain
-            if maze[node_position[0]][node_position[1]] != 0:
-                continue
- 
-            # Create new node
-            new_node = Node(current_node, node_position)
- 
-            # Append
-            children.append(new_node)
- 
-        # Loop through children
-        for child in children:
- 
-            # Child is on the closed list
-            if len([closed_child for closed_child in closed_list if closed_child == child]) > 0:
-                continue
- 
-            # Create the f, g, and h values
-            child.g = current_node.g + 1
-            child.h = ((child.position[0] - end_node.position[0]) ** 2) + \
-                      ((child.position[1] - end_node.position[1]) ** 2)
-            child.f = child.g + child.h
- 
-            # Child is already in the open list
-            if len([open_node for open_node in open_list if child == open_node and child.g > open_node.g]) > 0:
-                continue
- 
-            # Add the child to the open list
-            open_list.append(child)
-'''

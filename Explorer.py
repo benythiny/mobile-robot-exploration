@@ -17,6 +17,8 @@ import HexapodExplorer
  
 #import communication messages
 from messages import *
+
+ROBOT_SIZE = 0.3
  
 class Explorer:
     """ Class to represent an exploration agent
@@ -55,7 +57,7 @@ class Explorer:
         """
         #instantiate the robot
         self.robot = HexapodRobot.HexapodRobot(robotID)
-        #...and the explorer used in task t1c-t1e
+        #and the explorer
         self.explor = HexapodExplorer.HexapodExplorer()
  
     def start(self):
@@ -111,27 +113,38 @@ class Explorer:
         """
         while not self.stop:
             #obstacle growing
-            # self.gridmap_processed = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
+            gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
  
             #frontier calculation
-            self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap)
+            self.frontiers = self.explor.find_free_edge_frontiers(gridmap_inflated)
  
             #path planning and goal selection
             odometry = self.robot.odometry_
             #...
-            self.path = Path()
+            # self.path = Path()
+            if odometry is not None and self.frontiers is not None:
+                start = odometry.pose
+                # todo: add closest frontier search
+                end = self.frontiers[0]
+                
+                self.path = self.explor.plan_path(gridmap_inflated, start, end)
+                #self.path = self.explor.simplify_path(gridmap_inflated, self.path)
  
     def trajectory_following(self):
         """trajectory following thread that assigns new goals to the robot navigation thread
         """ 
-        '''while not self.stop:
+        while not self.stop:
             #...
             if self.robot.navigation_goal is None:
-                #fetch the new navigation goal
-                nav_goal = path_nav.pop(0)
-                #give it to the robot
-                self.robot.goto(nav_goal)
-            #...'''
+                if self.path is not None:
+                    #fetch the new navigation goal
+                    #nav_goal = path_nav.pop(0)
+                    
+                    nav_goal = self.path.poses.pop(0)
+                    #give it to the robot
+                    self.robot.goto(nav_goal)
+                    time.sleep(1)
+            #...
  
  
 if __name__ == "__main__":
@@ -156,6 +169,11 @@ if __name__ == "__main__":
                 if type(frontier) != Pose:
                     frontier = frontier[0]
                 ax.scatter(frontier.position.x, frontier.position.y,c='red')
+        
+        if ex0.path is not None: #print simple path points
+            for pose in ex0.path.poses:
+                ax.scatter(pose.position.x, pose.position.y,c='green', s=150, marker='x')
+                
         '''    
         #plot the gridmap
         if ex0.gridmap.data is not None:
