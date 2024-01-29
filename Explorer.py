@@ -103,10 +103,13 @@ class Explorer:
         """
         while not self.stop:
             time.sleep(THREAD_SLEEP)
-            #fuse the laser scan   
+               
             #get the current laser scan and odometry and fuse them to the map
             self.gridmap = self.explor.fuse_laser_scan(self.gridmap, self.robot.laser_scan_, self.robot.odometry_)
- 
+            
+            #obstacle growing
+            self.gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
+                    
             #...
  
     def planning(self):
@@ -117,21 +120,31 @@ class Explorer:
             time.sleep(THREAD_SLEEP)
  
             #frontier calculation
-            self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap)
+            self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap_inflated)
  
             #path planning and goal selection
             odometry = self.robot.odometry_
             
-            if odometry is not None and self.frontiers is not None:
+            if odometry is None or self.frontiers is None:
+                continue
+            
+            if self.path is None or len(self.path.poses) == 0:
                 start = odometry.pose
-                # todo: add closest frontier search
-                end = self.frontiers[0]
-                if self.path is None or len(self.path.poses) == 0:
-                    #obstacle growing
-                    self.gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
-                    self.path = self.explor.plan_path(self.gridmap_inflated, start, end)
+                # sort all frontiers by their distance to current position
+                # and return only feasible ones
+                self.frontiers = self.explor.sort_frontiers_by_dist(self.gridmap_inflated, start, self.frontiers)
+                
+                # pick the closest one
+                if len(self.frontiers) > 0:
+                    end = self.frontiers[0]
+                    self.path = self.explor.plan_path(self.gridmap_inflated, start, end) 
                     self.path = self.explor.simplify_path(self.gridmap_inflated, self.path)
- 
+                else: 
+                    # if list is empty, return the app - no more frontiers
+                    print("No frontiers detected. Terminating the script.")
+                    self.stop = True
+                        
+                        
     def trajectory_following(self):
         """trajectory following thread that assigns new goals to the robot navigation thread
         """ 
@@ -141,13 +154,17 @@ class Explorer:
             time.sleep(THREAD_SLEEP)
             if self.robot.navigation_goal is None:
                 if self.path is not None and len(self.path.poses) > 0:
-                    #fetch the new navigation goal                    
-                    nav_goal = self.path.poses.pop(0)
                     
-                    #give it to the robot
-                    self.robot.goto(nav_goal)
-                    print(time.strftime("%H:%M:%S"),"Going to:")
-                    print(nav_goal)
+                    #fetch the new navigation goal                    
+                    if len(self.path.poses) > 1:
+                        nav_goal = self.path.poses[1]
+                    
+                        #give it to the robot
+                        self.robot.goto(nav_goal)
+                        print(time.strftime("%H:%M:%S"),"Going to:")
+                        print(nav_goal)
+                    
+                    prev_goal = self.path.poses.pop(0)
                     
                     #print("Current self position: ", self.robot.odometry_.pose)
                     #print("Going to: ", nav_goal)
@@ -165,7 +182,7 @@ if __name__ == "__main__":
     #continuously plot the map, targets and plan (once per second)
     fig, (ax, bx) = plt.subplots(nrows=2, ncols=1, figsize=(10,15))
     plt.ion()
-    while(1):
+    while not ex0.stop:
         plt.cla()
         ax.cla()
         bx.cla()
@@ -191,3 +208,5 @@ if __name__ == "__main__":
     
         #to throttle the plotting pause for 1s
         plt.pause(THREAD_SLEEP)
+    ex0.__del__()
+    

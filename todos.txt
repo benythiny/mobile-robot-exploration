@@ -1,0 +1,5 @@
+1. fix path simplification
+2. only plan a new path when the previous one is already finished
+3. only show feasible frontiers
+4. fix collisions with objects that were not taken into
+consideration while planning the path
