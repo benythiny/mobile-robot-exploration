@@ -387,9 +387,14 @@ class HexapodExplorer:
                     
             # only add those frontiers that are on the free cells
             if map2d[frontier_cell[0], frontier_cell[1]] < 0.5:
-                frontiers_weighted.append(frontier)
+                frontiers_weighted.append((frontier, I_action))
+                
+        sorted_data = sorted(frontiers_weighted, key=lambda x: x[1])
 
-        return frontiers_weighted
+        # Extract the sorted lists
+        sorted_frontiers = [lis[0] for lis in sorted_data]
+
+        return sorted_frontiers
  
  
     def grow_obstacles(self, grid_map_original, robot_size):
@@ -641,6 +646,10 @@ class HexapodExplorer:
     
     def sort_frontiers_by_dist(self, gridmap_processed, start, frontiers):
         frontiers_distances = []
+        
+        if frontiers is None:
+            return frontiers_distances
+        
         for f in frontiers:
             path = self.plan_path(gridmap_processed, start, f)
             if path is not None and len(path.poses)>0:

@@ -58,6 +58,9 @@ class Explorer:
         # terminating condition
         self.terminate_counts = 10
         
+        # planning methods
+        self.planning_method = 2
+        
         
         """Connecting the simulator
         """
@@ -126,8 +129,10 @@ class Explorer:
             time.sleep(THREAD_SLEEP)
  
             #frontier calculation
-            # self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap_inflated)
-            self.frontiers = self.explor.find_inf_frontiers(self.gridmap_inflated)
+            if self.planning_method == 1:
+                self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap_inflated)
+            else: 
+                self.frontiers = self.explor.find_inf_frontiers(self.gridmap_inflated)
  
             #path planning and goal selection
             odometry = self.robot.odometry_
@@ -197,32 +202,55 @@ class Explorer:
             
             if self.path is None or len(self.path.poses) == 0:
                 start = odometry.pose
-                # P1: sort all frontiers by their distance to current position
-                # and return only feasible ones
-                self.frontiers = self.explor.sort_frontiers_by_dist(self.gridmap_inflated, start, self.frontiers)
                 
-                # pick the closest one
-                if len(self.frontiers) > 0:
-                    self.goal_frontier = self.frontiers[0]
-                    print(time.strftime("%H:%M:%S"), "Started planning the path.")
-                    self.path = self.explor.plan_path(self.gridmap_inflated, start, self.goal_frontier) 
-                    simple_path = self.explor.simplify_path(self.gridmap_inflated, self.path)
-                    print(time.strftime("%H:%M:%S"), "Path was successfully planned.")
-                    if simple_path != None:
-                        #print("... and its not None")
-                        self.path = simple_path
-                    if len(self.path.poses) > 10:
-                        print(time.strftime("%H:%M:%S"), "Path is too long. Rerouting")
-                        self.path = None
+                if self.planning_method == 1:
+                    # P1: sort all frontiers by their distance to current position
+                    # and return only feasible ones
+                    self.frontiers = self.explor.sort_frontiers_by_dist(self.gridmap_inflated, start, self.frontiers)
+                    
+                    # pick the closest one
+                    if len(self.frontiers) > 0:
+                        self.goal_frontier = self.frontiers[0]
+                        print(time.strftime("%H:%M:%S"), "Started planning the path.")
+                        self.path = self.explor.plan_path(self.gridmap_inflated, start, self.goal_frontier) 
+                        simple_path = self.explor.simplify_path(self.gridmap_inflated, self.path)
+                        print(time.strftime("%H:%M:%S"), "Path was successfully planned.")
+                        if simple_path != None:
+                            #print("... and its not None")
+                            self.path = simple_path
+                        if len(self.path.poses) > 10:
+                            print(time.strftime("%H:%M:%S"), "Path is too long. Rerouting")
+                            self.path = None
+                            
+                    else: 
+                        # if list is empty, return the app - no more frontiers
+                        if self.terminate_counts == 0:
+                            print("No frontiers detected. Terminating the script.")
+                            self.stop = True
+                        else:
+                            self.terminate_counts -= 1
+                            print("Counts before termination: ", self.terminate_counts)
+                            
+                elif self.planning_method == 2:
+                    # sort frontiers by information gain
+                    # Sort the list of tuples based on the second value
+                    if self.frontiers is not None:
                         
-                '''else: 
-                    # if list is empty, return the app - no more frontiers
-                    if self.terminate_counts == 0:
-                        print("No frontiers detected. Terminating the script.")
-                        self.stop = True
-                    else:
-                        self.terminate_counts -= 1
-                        print("Counts before termination: ", self.terminate_counts)'''
+                        for f in self.frontiers:
+                            self.goal_frontier = f
+                            print(time.strftime("%H:%M:%S"), "Started planning the path.")
+                            self.path = self.explor.plan_path(self.gridmap_inflated, start, self.goal_frontier) 
+                            simple_path = self.explor.simplify_path(self.gridmap_inflated, self.path)
+                            
+                            if self.path is not None:       
+                                print(time.strftime("%H:%M:%S"), "Path was successfully planned.")
+                                if simple_path is not None:
+                                    self.path = simple_path
+                                if len(self.path.poses) > 10:
+                                    print(time.strftime("%H:%M:%S"), "Path is too long. Rerouting")
+                                    self.path = None
+                                else:
+                                    break
             
                        
                         
@@ -261,7 +289,7 @@ if __name__ == "__main__":
     time.sleep(10*THREAD_SLEEP)
     
     #continuously plot the map, targets and plan (once per second)
-    fig, (ax, bx) = plt.subplots(nrows=2, ncols=1, figsize=(15,20))
+    fig, (ax, bx) = plt.subplots(nrows=2, ncols=1, figsize=(10,25))
     plt.ion()
     while not ex0.stop:
         plt.cla()
