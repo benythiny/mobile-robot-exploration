@@ -288,7 +288,9 @@ class HexapodExplorer:
         # Free-edge centroids
         free_cells = []
         '''
-        f1
+        """
+        f1 feature
+        """
         for label in range(1, num_labels + 1):
             # Extract the coordinates of the labeled region (connected component)
             region = np.argwhere(labeled_image == label)
@@ -300,7 +302,7 @@ class HexapodExplorer:
             free_cells.append(Pose(Vector3(cell[1], cell[0], 0), Quaternion(1, 0, 0, 0)))
          '''   
         """
-        f2 Implementation
+        f2 feature
         """
         for label in range(1, num_labels + 1):
             # Extract the coordinates of the labeled region (connected component)
@@ -309,7 +311,7 @@ class HexapodExplorer:
             
             D = LASER_MAX_RANGE / grid_map.resolution
             n_r = np.floor(f/D + 0.5) +1
-            kmeans = KMeans(n_clusters=int(n_r), max_iter=70, tol=1e-2, n_init=1).fit(region)
+            kmeans = KMeans(n_clusters=int(n_r), max_iter=80, tol=1e-2, n_init=1).fit(region)
             for centroid in kmeans.cluster_centers_:
                 if grid_data[int(centroid[0]), int(centroid[1])] < 0.5:
                     cell = self.map_to_world(grid_map, np.array([centroid[0], centroid[1]]))
@@ -328,15 +330,66 @@ class HexapodExplorer:
             return None
  
     def find_inf_frontiers(self, grid_map):
-        """Method to find the frontiers based on information theory approach
+        """Method to calculate the frontiers from the mutual information theory approach
+           f3 feature
         Args:
             grid_map: OccupancyGrid - gridmap of the environment
         Returns:
             pose_list: Pose[] - list of selected frontiers
         """
- 
-        # TODO:[project] find the information rich points in the environment
-        return None
+        
+        directions = 4
+        angle_coef = 2*math.pi/directions
+        frontiers_weighted = []
+        
+        # Find free frontiers
+        frontiers = self.find_free_edge_frontiers(grid_map)
+        if frontiers is None:
+            return None
+        
+        # prepare the map array
+        H = grid_map.data.copy()
+        map2d = grid_map.data.reshape(grid_map.height, grid_map.width)
+        H = H.reshape(grid_map.height, grid_map.width)
+        
+        # Find entropy of every cell in the map
+        for row in range(H.shape[0]):
+            for col in range(H.shape[1]): 
+                p = H[row][col]
+                if p == 1 or p == 0:
+                    H[row][col] = 0
+                else:
+                    H[row][col] = -p * math.log(p) - (1-p) * math.log(1-p)
+
+        # Calculate information gain of each frontier
+        for frontier in frontiers:
+            dir = Pose()
+            I_action = 0
+            frontier_cell = self.world_to_map(grid_map, np.array([frontier.position.y, frontier.position.x]))
+
+            # Calculate information gain along 8 beams from the frontier
+            for i in range(directions):
+                dir.position.y = LASER_MAX_RANGE * math.sin(i * angle_coef) + frontier.position.y
+                dir.position.x = LASER_MAX_RANGE * math.cos(i * angle_coef) + frontier.position.x
+                dir_end_world = np.array([dir.position.x, dir.position.y])
+                dir_end_cell = self.world_to_map(grid_map, dir_end_world)
+                dir_line = self.bresenham_line(frontier_cell, dir_end_cell)
+
+                # Sum up the information gain from the direction and discard the wrong ones
+                for x, y in dir_line:
+                    if x < 0 or x >= grid_map.width:
+                        break
+                    if y < 0 or y >= grid_map.height:
+                        break
+                    if map2d[y, x] == 1:
+                        break    
+                    I_action += H[y, x]
+                    
+            # only add those frontiers that are on the free cells
+            if map2d[frontier_cell[0], frontier_cell[1]] < 0.5:
+                frontiers_weighted.append(frontier)
+
+        return frontiers_weighted
  
  
     def grow_obstacles(self, grid_map_original, robot_size):

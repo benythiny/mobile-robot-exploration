@@ -126,7 +126,8 @@ class Explorer:
             time.sleep(THREAD_SLEEP)
  
             #frontier calculation
-            self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap_inflated)
+            # self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap_inflated)
+            self.frontiers = self.explor.find_inf_frontiers(self.gridmap_inflated)
  
             #path planning and goal selection
             odometry = self.robot.odometry_
