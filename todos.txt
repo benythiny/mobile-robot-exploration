@@ -14,3 +14,10 @@ x 5. stop the path if the frontier is not there anymore or is in obstacle
 6. Fix rotations of the robot when it stands still
 
 7. REWRITE goto(self, goal, odometry, collision) !
+
+8. maybe after deceting the collision, remove this frontier and plan the path to another one.
+On other hand, if it is not possible to plan the path, the next frontier would be considered
+
+9. change constants! 
+
+10. implement timeout for path simplification

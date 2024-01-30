@@ -526,8 +526,8 @@ class HexapodExplorer:
                 else: #there is collision
                     path_simplified.poses.append(previous_pose) 
                     break
-            '''if len(b_line)==1 and pose != goal:
-                return None'''
+            if len(b_line)==1 and pose != goal:
+                return None
         return path_simplified
             
             

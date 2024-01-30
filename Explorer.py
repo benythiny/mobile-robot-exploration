@@ -129,6 +129,20 @@ class Explorer:
             #path planning and goal selection
             odometry = self.robot.odometry_
             
+            
+            # if there are no more frontiers, return the app 
+            if self.path is not None and self.frontiers is None:
+                if self.terminate_counts == 0:
+                    print(time.strftime("%H:%M:%S"), "No frontiers detected. Terminating the script.")
+                    self.stop = True
+                else:
+                    self.terminate_counts -= 1
+                    print(time.strftime("%H:%M:%S"), "Counts before termination: ", self.terminate_counts)
+            else:
+                # restore the counter
+                self.terminate_counts = 10
+                
+            
             if odometry is None or self.frontiers is None:
                 continue
             
@@ -146,22 +160,37 @@ class Explorer:
                                 frontier_still_there = True
                                 continue
                         if frontier_still_there == False:
-                            print("The old frontier goal is not there anymore. Rerouting to the next closest frontier...")
+                            print(time.strftime("%H:%M:%S"), "The old frontier goal is not there anymore. Rerouting to the next closest frontier...")
                             self.path = None
                             self.robot.navigation_goal = None
                         
             # check if there ane no new obstacles on the planned path 
             if self.path is not None:
                 if len(self.path.poses) > 0:
-                    for point in self.path.poses:
-                        y, x = point.position.y, point.position.x 
-                        [y, x] = self.explor.world_to_map(self.gridmap_inflated, np.array([y, x]))
+                    collision = False
+                    for p in range(len(self.path.poses) - 1):
+                        y, x = self.path.poses[p].position.y, self.path.poses[p].position.x 
+                        b_start = self.explor.world_to_map(self.gridmap_inflated, np.array([y, x]))
+                        
+                        y, x = self.path.poses[p+1].position.y, self.path.poses[p+1].position.x 
+                        b_end = self.explor.world_to_map(self.gridmap_inflated, np.array([y, x]))
+                         
                         map2d = self.gridmap_inflated.data.reshape(self.gridmap_inflated.height, self.gridmap_inflated.width)
-                        if map2d.data[y, x] > 0.5:
-                            # collision detected
-                            print("Collision detected on the planned path. Rerouting...")
-                            self.path = None
-                            self.robot.navigation_goal = None
+                        '''if map2d.data[y, x] > 0.5:'''
+                        b_line = self.explor.bresenham_line(b_start, b_end)
+                        #collision = self.collision_on_path(grid_map, b_line)
+                        
+                        
+                        for (y, x) in b_line: #check for collision
+                            if map2d[y,x] > 0.5: 
+                                collision = True
+                                break
+                    #if collision == False or len(b_line) < 2:
+                    if collision == True:
+                        # collision detected
+                        print(time.strftime("%H:%M:%S"),"Collision detected on the planned path. Rerouting...")
+                        self.path = None
+                        self.robot.navigation_goal = None
             
             if self.path is None or len(self.path.poses) == 0:
                 start = odometry.pose
@@ -172,21 +201,23 @@ class Explorer:
                 # pick the closest one
                 if len(self.frontiers) > 0:
                     self.goal_frontier = self.frontiers[0]
+                    print(time.strftime("%H:%M:%S"), "Started planning the path.")
                     self.path = self.explor.plan_path(self.gridmap_inflated, start, self.goal_frontier) 
                     simple_path = self.explor.simplify_path(self.gridmap_inflated, self.path)
-                    #print("Path was simplified")
+                    print(time.strftime("%H:%M:%S"), "Path was successfully planned.")
                     if simple_path != None:
                         #print("... and its not None")
                         self.path = simple_path
-                else: 
+                '''else: 
                     # if list is empty, return the app - no more frontiers
                     if self.terminate_counts == 0:
                         print("No frontiers detected. Terminating the script.")
                         self.stop = True
                     else:
                         self.terminate_counts -= 1
-                        print("Counts before termination: ", self.terminate_counts)
-                        
+                        print("Counts before termination: ", self.terminate_counts)'''
+            
+                       
                         
     def trajectory_following(self):
         """trajectory following thread that assigns new goals to the robot navigation thread
@@ -243,7 +274,11 @@ if __name__ == "__main__":
         if ex0.path is not None: #print path points
             for pose in ex0.path.poses:
                 ax.scatter(pose.position.x, pose.position.y,c='green', s=50, marker='x')
- 
+        
+        # add current robot's pose
+        ax.scatter(ex0.robot.odometry_.pose.position.x, ex0.robot.odometry_.pose.position.y,c='blue', s = 200)
+        bx.scatter(ex0.robot.odometry_.pose.position.x, ex0.robot.odometry_.pose.position.y,c='blue', s = 200)
+        
         plt.xlabel('x[m]')
         plt.ylabel('y[m]')
         ax.set_aspect('equal', 'box')
