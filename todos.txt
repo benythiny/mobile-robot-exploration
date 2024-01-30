@@ -1,6 +1,16 @@
-1. fix path simplification
-2. only plan a new path when the previous one is already finished
-3. only show feasible frontiers
+x 1. fix path simplification -> Done. x and y coords were in wrong order ( I guess)
+also I rewrote my algorithm buy the template from the web
+
+x 2. only plan a new path when the previous one is already finished -> Done
+
+x 3. only show feasible frontiers -> Done
+
 4. fix collisions with objects that were not taken into
-consideration while planning the path
-5. stop the path if the frontier is not there anymore
+consideration while planning the path -> reactive goto?
+x -> or simply check if there is collision between current position and next goal (bresen line)
+
+x 5. stop the path if the frontier is not there anymore or is in obstacle
+
+6. Fix rotations of the robot when it stands still
+
+7. REWRITE goto(self, goal, odometry, collision) !

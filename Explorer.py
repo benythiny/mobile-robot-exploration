@@ -40,6 +40,7 @@ class Explorer:
         
         # define frontiers
         self.frontiers = None
+        self.goal_frontier = None
         
         #prepare the gridmap
         self.gridmap = OccupancyGrid()
@@ -51,6 +52,9 @@ class Explorer:
         
         # map for planning with obstacles
         self.gridmap_inflated = OccupancyGrid()
+        
+        # terminating condition
+        self.terminate_counts = 10
         
         
         """Connecting the simulator
@@ -128,25 +132,60 @@ class Explorer:
             if odometry is None or self.frontiers is None:
                 continue
             
+            # check if the goal is still a frontier, erase the path otherwise    
+            if self.path is not None:
+                if len(self.path.poses) > 0:
+                    if self.goal_frontier is not None:
+                        frontier_still_there = False
+                        for f in self.frontiers:
+                            # distance from goal_frontier to every new frontier
+                            dist = self.goal_frontier.dist(f)
+                            
+                            # if the new frontier is still close to the original goal, continue
+                            if dist < 0.5:
+                                frontier_still_there = True
+                                continue
+                        if frontier_still_there == False:
+                            print("The old frontier goal is not there anymore. Rerouting to the next closest frontier...")
+                            self.path = None
+                            self.robot.navigation_goal = None
+                        
+            # check if there ane no new obstacles on the planned path 
+            if self.path is not None:
+                if len(self.path.poses) > 0:
+                    for point in self.path.poses:
+                        y, x = point.position.y, point.position.x 
+                        [y, x] = self.explor.world_to_map(self.gridmap_inflated, np.array([y, x]))
+                        map2d = self.gridmap_inflated.data.reshape(self.gridmap_inflated.height, self.gridmap_inflated.width)
+                        if map2d.data[y, x] > 0.5:
+                            # collision detected
+                            print("Collision detected on the planned path. Rerouting...")
+                            self.path = None
+                            self.robot.navigation_goal = None
+            
             if self.path is None or len(self.path.poses) == 0:
                 start = odometry.pose
-                # sort all frontiers by their distance to current position
+                # P1: sort all frontiers by their distance to current position
                 # and return only feasible ones
                 self.frontiers = self.explor.sort_frontiers_by_dist(self.gridmap_inflated, start, self.frontiers)
                 
                 # pick the closest one
                 if len(self.frontiers) > 0:
-                    end = self.frontiers[0]
-                    self.path = self.explor.plan_path(self.gridmap_inflated, start, end) 
+                    self.goal_frontier = self.frontiers[0]
+                    self.path = self.explor.plan_path(self.gridmap_inflated, start, self.goal_frontier) 
                     simple_path = self.explor.simplify_path(self.gridmap_inflated, self.path)
-                    print("Path was simplified")
+                    #print("Path was simplified")
                     if simple_path != None:
-                        print("... and its not None")
+                        #print("... and its not None")
                         self.path = simple_path
                 else: 
                     # if list is empty, return the app - no more frontiers
-                    print("No frontiers detected. Terminating the script.")
-                    self.stop = True
+                    if self.terminate_counts == 0:
+                        print("No frontiers detected. Terminating the script.")
+                        self.stop = True
+                    else:
+                        self.terminate_counts -= 1
+                        print("Counts before termination: ", self.terminate_counts)
                         
                         
     def trajectory_following(self):
@@ -165,8 +204,8 @@ class Explorer:
                     
                         #give it to the robot
                         self.robot.goto(nav_goal)
-                        print(time.strftime("%H:%M:%S"),"Going to:")
-                        print(nav_goal)
+                        #print(time.strftime("%H:%M:%S"),"Going to:")
+                        # print(nav_goal)
                     
                     prev_goal = self.path.poses.pop(0)
                     
