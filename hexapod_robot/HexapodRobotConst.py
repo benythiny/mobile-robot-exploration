@@ -24,3 +24,15 @@ TIBIA_MAX = 0.1
 COXA_MAX = 0.01
 
 SPEEDUP = 4
+
+"""
+Custom constants
+"""
+ROBOT_SIZE = 0.4
+EXTRA_PADDING = 0.13
+DELTA_DISTANCE = 0.12
+C_TURNING_SPEED = 5
+C_AVOID_SPEED = 10
+THREAD_SLEEP = 0.4
+LASER_MAX_RANGE = 10.0 #laser_scan.range_max
+LASER_MIN_RANGE = 0.01 #laser_scan.range_min
