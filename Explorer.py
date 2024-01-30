@@ -18,8 +18,10 @@ import HexapodExplorer
 #import communication messages
 from messages import *
 
-ROBOT_SIZE = 0.5
+ROBOT_SIZE = 0.4
 THREAD_SLEEP = 0.5
+FRONTIER_DIST = 0.5
+
  
 class Explorer:
     """ Class to represent an exploration agent
@@ -156,7 +158,7 @@ class Explorer:
                             dist = self.goal_frontier.dist(f)
                             
                             # if the new frontier is still close to the original goal, continue
-                            if dist < 0.5:
+                            if dist < FRONTIER_DIST:
                                 frontier_still_there = True
                                 continue
                         if frontier_still_there == False:
@@ -182,7 +184,7 @@ class Explorer:
                         
                         
                         for (y, x) in b_line: #check for collision
-                            if map2d[y,x] > 0.5: 
+                            if map2d[y,x] >= 0.5: 
                                 collision = True
                                 break
                     #if collision == False or len(b_line) < 2:
@@ -208,6 +210,10 @@ class Explorer:
                     if simple_path != None:
                         #print("... and its not None")
                         self.path = simple_path
+                    if len(self.path.poses) > 10:
+                        print(time.strftime("%H:%M:%S"), "Path is too long. Rerouting")
+                        self.path = None
+                        
                 '''else: 
                     # if list is empty, return the app - no more frontiers
                     if self.terminate_counts == 0:
@@ -254,7 +260,7 @@ if __name__ == "__main__":
     time.sleep(10*THREAD_SLEEP)
     
     #continuously plot the map, targets and plan (once per second)
-    fig, (ax, bx) = plt.subplots(nrows=2, ncols=1, figsize=(10,15))
+    fig, (ax, bx) = plt.subplots(nrows=2, ncols=1, figsize=(15,20))
     plt.ion()
     while not ex0.stop:
         plt.cla()

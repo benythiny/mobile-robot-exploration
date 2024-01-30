@@ -28,6 +28,7 @@ import collections
 import heapq
 import skimage.measure as skm
  
+LASER_MAX_RANGE = 10.0
  
 class HexapodExplorer:
  
@@ -286,6 +287,8 @@ class HexapodExplorer:
  
         # Free-edge centroids
         free_cells = []
+        '''
+        f1
         for label in range(1, num_labels + 1):
             # Extract the coordinates of the labeled region (connected component)
             region = np.argwhere(labeled_image == label)
@@ -295,6 +298,22 @@ class HexapodExplorer:
             centroid_y = np.mean(region[:, 0])
             cell = self.map_to_world(grid_map, np.array([centroid_y, centroid_x]))
             free_cells.append(Pose(Vector3(cell[1], cell[0], 0), Quaternion(1, 0, 0, 0)))
+         '''   
+        """
+        f2 Implementation
+        """
+        for label in range(1, num_labels + 1):
+            # Extract the coordinates of the labeled region (connected component)
+            region = np.argwhere(labeled_image == label)
+            f = len(region)
+            
+            D = LASER_MAX_RANGE / grid_map.resolution
+            n_r = np.floor(f/D + 0.5) +1
+            kmeans = KMeans(n_clusters=int(n_r), max_iter=70, tol=1e-2, n_init=1).fit(region)
+            for centroid in kmeans.cluster_centers_:
+                if grid_data[int(centroid[0]), int(centroid[1])] < 0.5:
+                    cell = self.map_to_world(grid_map, np.array([centroid[0], centroid[1]]))
+                    free_cells.append(Pose(Vector3(cell[1], cell[0], 0), Quaternion(1, 0, 0, 0)))
         '''
          
         for coord in free_coordinates:
@@ -663,7 +682,8 @@ def astar(array, start, goal):
  
                 if 0 <= neighbor[1] < array.shape[1]:
  
-                    if array[neighbor[0]][neighbor[1]] == 1:
+                    # if array[neighbor[0]][neighbor[1]] == 1:
+                    if array[neighbor[0]][neighbor[1]] >= 0.5:
                         continue
  
                 else:
