@@ -338,7 +338,7 @@ class HexapodExplorer:
             pose_list: Pose[] - list of selected frontiers
         """
         
-        directions = 4
+        directions = 8
         angle_coef = 2*math.pi/directions
         frontiers_weighted = []
         
