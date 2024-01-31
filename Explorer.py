@@ -19,9 +19,13 @@ import HexapodExplorer
 #import communication messages
 from messages import *
 
+from lkh.invoke_LKH import solve_TSP
+
 ROBOT_SIZE = 0.4
 THREAD_SLEEP = 0.5
 FRONTIER_DIST = 0.5
+
+PLANNING_METHOD = 3
 
  
 class Explorer:
@@ -56,11 +60,17 @@ class Explorer:
         # map for planning with obstacles
         self.gridmap_inflated = OccupancyGrid()
         
+        # map for path planning only 
+        self.gridmap_planning = OccupancyGrid()
+        
         # terminating condition
         self.terminate_counts = 10
         
         # planning methods
-        self.planning_method = 2
+        self.planning_method = PLANNING_METHOD
+        
+        # 
+        self.init_rotating = True
         
         
         """Connecting the simulator
@@ -152,7 +162,7 @@ class Explorer:
             print(time.strftime("%H:%M:%S"), "Moving. Current position: ", self.robot.odometry_)
             
             '''
-        self.init_mapping()
+        
         
  
         
@@ -189,7 +199,9 @@ class Explorer:
             
             #obstacle growing
             self.gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
-                    
+            
+            #self.gridmap_planning = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE + 0.1)
+            self.gridmap_planning = self.gridmap_inflated       
             #...
  
     def goal_is_still_a_frontier(self):
@@ -239,8 +251,15 @@ class Explorer:
         
         if self.path is None:
             return   
+        
+        validated_path = self.explor.plan_path(self.gridmap_inflated, self.robot.odometry_.pose, self.goal_frontier)
+        if validated_path is None:
+            print(time.strftime("%H:%M:%S"),"Collision detected on the planned path. Rerouting...")
+            self.robot.navigation_goal = None
+            self.path = None
+            
     
-        # append current robot position to the planned path
+        '''# append current robot position to the planned path
         planned_path = [self.robot.odometry_.pose]
         planned_path.extend(copy.deepcopy(self.path.poses))
         
@@ -263,12 +282,14 @@ class Explorer:
             # collision detected
             print(time.strftime("%H:%M:%S"),"Collision detected on the planned path. Rerouting...")
             self.path = None
-            self.robot.navigation_goal = None
+            self.robot.navigation_goal = None'''
             
     def planning(self):
         """ Planning thread that takes the constructed gridmap, find frontiers, and select the next goal with the navigation path  
         """
         time.sleep(4*THREAD_SLEEP)
+        self.init_mapping()
+        self.init_rotating = False
         
         while not self.stop:
             time.sleep(THREAD_SLEEP)
@@ -297,7 +318,8 @@ class Explorer:
             
             #path planning
             start = self.robot.odometry_.pose
-            print(time.strftime("%H:%M:%S"), "Current position: ", start)
+            current_path = None
+            # print(time.strftime("%H:%M:%S"), "Current position: ", start)
             
             if self.planning_method == 1:
                 # P1: sort all frontiers by their distance to current position
@@ -308,7 +330,7 @@ class Explorer:
                 if len(self.frontiers) > 0:
                     self.goal_frontier = self.frontiers[0]
                     print(time.strftime("%H:%M:%S"), "Started planning the path.")
-                    self.path   = self.explor.plan_path(self.gridmap_inflated, start, self.goal_frontier) 
+                    self.path   = self.explor.plan_path(self.gridmap_planning, start, self.goal_frontier) 
                     simple_path = self.explor.simplify_path(self.gridmap_inflated, self.path)
                     print(time.strftime("%H:%M:%S"), "Path was successfully planned.")
                     if simple_path is not None:
@@ -317,21 +339,12 @@ class Explorer:
                         print(time.strftime("%H:%M:%S"), "Path is too long. Rerouting")
                         # self.path = None
                         
-                '''else: 
-                    # if list is empty, return the app - no more frontiers
-                    if self.terminate_counts == 0:
-                        print("No frontiers detected. Terminating the script.")
-                        self.stop = True
-                    else:
-                        self.terminate_counts -= 1
-                        print("Counts before termination: ", self.terminate_counts)'''
-                        
             elif self.planning_method == 2:
                 # sort frontiers by information gain
                 # Sort the list of tuples based on the second value
                 #if self.frontiers is not None:
                 print(time.strftime("%H:%M:%S"), "Started planning the path.")
-                frontiers_by_dist = self.explor.sort_frontiers_by_dist(self.gridmap_inflated, start, self.frontiers)
+                frontiers_by_dist = self.explor.sort_frontiers_by_dist(self.gridmap_planning, start, self.frontiers)
                 num_frontier = len(self.frontiers)
                 for f in self.frontiers:
                     self.goal_frontier = f
@@ -345,7 +358,7 @@ class Explorer:
                     except:
                         print(time.strftime("%H:%M:%S"), "Frontiers index is not in the list")'''
                     
-                    self.path = self.explor.plan_path(self.gridmap_inflated, start, self.goal_frontier) 
+                    self.path = self.explor.plan_path(self.gridmap_planning, start, self.goal_frontier) 
                     simple_path = self.explor.simplify_path(self.gridmap_inflated, self.path)
                     
                     if self.path is not None:       
@@ -360,6 +373,53 @@ class Explorer:
                             break
                     else:
                         print(time.strftime("%H:%M:%S"), "No path was found.")
+            elif self.planning_method == 3:
+                if self.frontiers is None:
+                    continue
+                if self.frontiers == 1:
+                    self.goal_frontier
+                    self.path = self.explor.plan_path(self.gridmap_planning, start, self.goal_frontier)
+                # TSP formulation
+                
+                # 0. add current location to all frontiers
+                all_locations = []
+                all_locations.append(start)
+                all_locations.extend(self.frontiers)
+                num_locations = len(all_locations)
+                
+                # 1. construct a distance matrix
+                dist_matrix = np.zeros((num_locations, num_locations))
+                
+                for row in range(num_locations):
+                    for col in range(num_locations):
+                        current_path = self.explor.plan_path(self.gridmap_planning, all_locations[row], all_locations[col])
+                        if current_path is None:
+                            value = 10000
+                        else:
+                            value = len(current_path.poses)
+                        dist_matrix[row][col] = value
+                        
+                # 2. find the shortest feasible tour by solving the TSP problem
+                TSP_result = solve_TSP(dist_matrix)
+                
+                # 3. assign the first frontier of the tour as the next exploration goal
+                goal_frontier = all_locations[TSP_result[1]]
+                
+                # 4. plan path to this frontier
+                current_path = self.explor.plan_path(self.gridmap_planning, start, goal_frontier)
+                simple_path  = self.explor.simplify_path(self.gridmap_inflated, current_path)
+                if current_path is not None:
+                    if simple_path is not None:
+                        self.path = simple_path
+                    else:
+                        self.path = current_path
+                    self.goal_frontier = goal_frontier
+                    print(time.strftime("%H:%M:%S"), "Path was successfully planned.")
+                # else do something related to the end of exploration
+                
+                
+                
+                
                         
     def trajectory_following(self):
         """trajectory following thread that assigns new goals to the robot navigation thread
@@ -368,6 +428,8 @@ class Explorer:
         while not self.stop:
             #...
             time.sleep(THREAD_SLEEP)
+            if self.init_rotating:
+                continue
             if self.robot.navigation_goal is None:
                 if self.path is not None and len(self.path.poses) > 0:
                     #fetch the new navigation goal                    

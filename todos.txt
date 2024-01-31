@@ -22,5 +22,9 @@ On other hand, if it is not possible to plan the path, the next frontier would b
 
 10. implement timeout for path simplification
 
+11. Move init_mapping somewhere else
+
+12. Consider removing oscilations in p2 planning by introducing a weighting function (dist to utility value)
+
 Questions:
 1. are collisions toleretated?
