@@ -28,5 +28,8 @@ On other hand, if it is not possible to plan the path, the next frontier would b
 
 13. при поиске фронтиров сразу прокладывать к ним дорогу, чтобы убрать недосягаемые
 
+14. дорога не оптимизируется нормально, если путь начинается из препятствия. например
+переделывать дорогу по попути, если она слишкои длинная.
+
 Questions:
 1. are collisions toleretated?
