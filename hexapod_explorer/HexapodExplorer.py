@@ -507,6 +507,7 @@ class HexapodExplorer:
         Returns:
             path: Path - path between the start and goal Pose on the map
         """
+        grid_map = copy.deepcopy(grid_map)
  
         path = Path()
         path.poses.append(goal)
@@ -519,10 +520,17 @@ class HexapodExplorer:
  
         map_start = tuple(self.world_to_map(grid_map, np.array([start.position.y, start.position.x])))
         map_goal = tuple(self.world_to_map(grid_map, np.array([goal.position.y, goal.position.x])))
+        
+        # make start cell 0
+        grid_data.data[map_start[1], map_start[0]] = 0
+        
+        # find path with A*
         found_path = astar(grid_data, map_start, map_goal)
+        
+        
  
         if found_path is None:
-            print("No path was found.")
+            # print("No path was found.")
             return None
         else:
             for point in found_path:

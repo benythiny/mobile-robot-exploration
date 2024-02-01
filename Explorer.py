@@ -22,10 +22,10 @@ from messages import *
 from lkh.invoke_LKH import solve_TSP
 
 ROBOT_SIZE = 0.4
-THREAD_SLEEP = 0.5
+THREAD_SLEEP = 0.4
 FRONTIER_DIST = 0.5
 
-PLANNING_METHOD = 3
+PLANNING_METHOD = 1
 
  
 class Explorer:
@@ -71,6 +71,8 @@ class Explorer:
         
         # 
         self.init_rotating = True
+        
+        self.path_to_draw = Path()
         
         
         """Connecting the simulator
@@ -200,8 +202,8 @@ class Explorer:
             #obstacle growing
             self.gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
             
-            #self.gridmap_planning = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE + 0.1)
-            self.gridmap_planning = self.gridmap_inflated       
+            self.gridmap_planning = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE + 0.1)
+            #self.gridmap_planning = self.gridmap_inflated       
             #...
  
     def goal_is_still_a_frontier(self):
@@ -233,35 +235,49 @@ class Explorer:
     def check_frontiers_presence(self):
         # if there are no more frontiers, return the app 
         if self.frontiers is None:
-            if self.terminate_counts == 0:
-                print(time.strftime("%H:%M:%S"), "No frontiers detected. Terminating the script.")
-                self.stop = True
-            else:
-                self.terminate_counts -= 1
-                print(time.strftime("%H:%M:%S"), "Counts before termination: ", self.terminate_counts)
-        else:
+            self.terminate_counts -= 1
+            print(time.strftime("%H:%M:%S"), "Counts before termination: ", self.terminate_counts)
+        #else:
             # restore the counter
-            self.terminate_counts = 10
+            # self.terminate_counts = 10
+            
+        if self.terminate_counts <= 0:
+                print(time.strftime("%H:%M:%S"), "No feasible frontiers detected. Terminating the script.")
+                self.stop = True
             
     def check_obstacles_on_path(self):
         # check if there ane no new obstacles on the planned path 
         collision = False
+        odometry = self.robot.odometry_
         if self.robot.odometry_ is None:
             return     
         
         if self.path is None:
             return   
         
-        validated_path = self.explor.plan_path(self.gridmap_inflated, self.robot.odometry_.pose, self.goal_frontier)
+        '''validated_path = self.explor.plan_path(self.gridmap_inflated, self.robot.odometry_.pose, self.goal_frontier)
         if validated_path is None:
             print(time.strftime("%H:%M:%S"),"Collision detected on the planned path. Rerouting...")
             self.robot.navigation_goal = None
-            self.path = None
+            self.path = None'''
             
-    
-        '''# append current robot position to the planned path
-        planned_path = [self.robot.odometry_.pose]
+        # mark current robot's position cell as free
+        #y, x = odometry.pose.position.y, odometry.pose.position.x 
+        #cell = self.explor.world_to_map(self.gridmap_inflated, np.array([y, x]))
+        map2d = self.gridmap_inflated.data.reshape(self.gridmap_inflated.height, self.gridmap_inflated.width)
+            
+        #map2d[cell[0], cell[1]] = 0
+
+        # append current robot position to the planned path
+        planned_path = [odometry.pose]
         planned_path.extend(copy.deepcopy(self.path.poses))
+        
+        '''for p in planned_path:
+            y, x = p.position.y, p.position.x 
+            [y, x] = self.explor.world_to_map(self.gridmap_inflated, np.array([y, x]))
+            if map2d[y,x] > 0.5: 
+                    collision = True
+                    break'''
         
         for p in range(len(planned_path) - 1):
             y, x = planned_path[p].position.y, planned_path[p].position.x 
@@ -270,7 +286,6 @@ class Explorer:
             y, x = planned_path[p+1].position.y, planned_path[p+1].position.x 
             b_end = self.explor.world_to_map(self.gridmap_inflated, np.array([y, x]))
                 
-            map2d = self.gridmap_inflated.data.reshape(self.gridmap_inflated.height, self.gridmap_inflated.width)
             b_line = self.explor.bresenham_line(b_start, b_end)
             
             for (y, x) in b_line: #check for collision
@@ -282,13 +297,13 @@ class Explorer:
             # collision detected
             print(time.strftime("%H:%M:%S"),"Collision detected on the planned path. Rerouting...")
             self.path = None
-            self.robot.navigation_goal = None'''
+            self.robot.navigation_goal = None
             
     def planning(self):
         """ Planning thread that takes the constructed gridmap, find frontiers, and select the next goal with the navigation path  
         """
         time.sleep(4*THREAD_SLEEP)
-        self.init_mapping()
+        # self.init_mapping()
         self.init_rotating = False
         
         while not self.stop:
@@ -298,7 +313,7 @@ class Explorer:
                 continue
  
             #frontier calculation
-            if self.planning_method == 1:
+            if self.planning_method == 1 or self.planning_method == 3:
                 self.frontiers = self.explor.find_free_edge_frontiers(self.gridmap_inflated)
             else: 
                 self.frontiers = self.explor.find_inf_frontiers(self.gridmap_inflated)
@@ -311,6 +326,11 @@ class Explorer:
             
             # if path is already planned, check path conditions
             if self.path is not None and len(self.path.poses) > 0:
+                
+                self.path_to_draw.poses = []
+                self.path_to_draw.poses.append(self.robot.odometry_.pose)
+                self.path_to_draw.poses.extend(self.path.poses)
+                
                 # self.goal_is_still_a_frontier()
                         
                 self.check_obstacles_on_path()
@@ -319,7 +339,6 @@ class Explorer:
             #path planning
             start = self.robot.odometry_.pose
             current_path = None
-            # print(time.strftime("%H:%M:%S"), "Current position: ", start)
             
             if self.planning_method == 1:
                 # P1: sort all frontiers by their distance to current position
@@ -331,8 +350,9 @@ class Explorer:
                     self.goal_frontier = self.frontiers[0]
                     print(time.strftime("%H:%M:%S"), "Started planning the path.")
                     self.path   = self.explor.plan_path(self.gridmap_planning, start, self.goal_frontier) 
-                    simple_path = self.explor.simplify_path(self.gridmap_inflated, self.path)
+                    simple_path = self.explor.simplify_path(self.gridmap_planning, self.path)
                     print(time.strftime("%H:%M:%S"), "Path was successfully planned.")
+                    print(time.strftime("%H:%M:%S"), "Going to frontiar at x: ", self.goal_frontier.position.x, ", y:", self.goal_frontier.position.y)
                     if simple_path is not None:
                         self.path = simple_path
                     if len(self.path.poses) > 10:
@@ -359,7 +379,7 @@ class Explorer:
                         print(time.strftime("%H:%M:%S"), "Frontiers index is not in the list")'''
                     
                     self.path = self.explor.plan_path(self.gridmap_planning, start, self.goal_frontier) 
-                    simple_path = self.explor.simplify_path(self.gridmap_inflated, self.path)
+                    simple_path = self.explor.simplify_path(self.gridmap_planning, self.path)
                     
                     if self.path is not None:       
                         
@@ -370,28 +390,34 @@ class Explorer:
                             # self.path = None
                         else:
                             print(time.strftime("%H:%M:%S"), "Path was successfully planned.")
+                            print(time.strftime("%H:%M:%S"), "Going to frontiar at x: ", self.goal_frontier.position.x, ", y:", self.goal_frontier.position.y)
+                    
                             break
                     else:
                         print(time.strftime("%H:%M:%S"), "No path was found.")
+            
             elif self.planning_method == 3:
-                if self.frontiers is None:
+                current_frontiers = self.frontiers
+                if current_frontiers is None:
                     continue
-                if self.frontiers == 1:
+                if current_frontiers == 1:
                     self.goal_frontier
                     self.path = self.explor.plan_path(self.gridmap_planning, start, self.goal_frontier)
+                    continue
+                
+                print(time.strftime("%H:%M:%S"), "Started planning the path with TSP.")
                 # TSP formulation
                 
                 # 0. add current location to all frontiers
                 all_locations = []
                 all_locations.append(start)
-                all_locations.extend(self.frontiers)
+                all_locations.extend(current_frontiers)
                 num_locations = len(all_locations)
                 
                 # 1. construct a distance matrix
                 dist_matrix = np.zeros((num_locations, num_locations))
-                
                 for row in range(num_locations):
-                    for col in range(num_locations):
+                    for col in range(1, num_locations):
                         current_path = self.explor.plan_path(self.gridmap_planning, all_locations[row], all_locations[col])
                         if current_path is None:
                             value = 10000
@@ -401,13 +427,28 @@ class Explorer:
                         
                 # 2. find the shortest feasible tour by solving the TSP problem
                 TSP_result = solve_TSP(dist_matrix)
+                print(time.strftime("%H:%M:%S"), TSP_result)
+                if len(TSP_result) < 2:
+                    self.terminate_counts -= 1
+                    print(time.strftime("%H:%M:%S"), "Counts before termination: ", self.terminate_counts)
+                    print(time.strftime("%H:%M:%S"), "TSP solution was not found.")
+                    print(time.strftime("%H:%M:%S"), "TSP result was ", TSP_result)
+                    continue
                 
                 # 3. assign the first frontier of the tour as the next exploration goal
-                goal_frontier = all_locations[TSP_result[1]]
+                try:
+                    goal_frontier = all_locations[TSP_result[1]]
+                except:
+                    print(time.strftime("%H:%M:%S"), "All locations: ", all_locations)
+                    print(time.strftime("%H:%M:%S"), TSP_result)
+                    self.terminate_counts -= 1
+                    print(time.strftime("%H:%M:%S"), "Counts before termination: ", self.terminate_counts)
+                    print(time.strftime("%H:%M:%S"), "TSP solution was not found.")
+                    continue
                 
                 # 4. plan path to this frontier
                 current_path = self.explor.plan_path(self.gridmap_planning, start, goal_frontier)
-                simple_path  = self.explor.simplify_path(self.gridmap_inflated, current_path)
+                simple_path  = self.explor.simplify_path(self.gridmap_planning, current_path)
                 if current_path is not None:
                     if simple_path is not None:
                         self.path = simple_path
@@ -415,12 +456,14 @@ class Explorer:
                         self.path = current_path
                     self.goal_frontier = goal_frontier
                     print(time.strftime("%H:%M:%S"), "Path was successfully planned.")
-                # else do something related to the end of exploration
-                
-                
-                
-                
-                        
+                    print(time.strftime("%H:%M:%S"), "Going to frontiar at x: ", self.goal_frontier.position.x, ", y:", self.goal_frontier.position.y)
+                    
+                else:
+                    print(time.strftime("%H:%M:%S"), "TSP solution was not found, couldn't plan path.")
+                    print(time.strftime("%H:%M:%S"), "Counts before termination: ", self.terminate_counts)
+                    self.frontiers = []
+                    self.terminate_counts -= 1
+                                      
     def trajectory_following(self):
         """trajectory following thread that assigns new goals to the robot navigation thread
         """ 
@@ -447,7 +490,7 @@ if __name__ == "__main__":
     
     #start the locomotion
     ex0.start()
-    time.sleep(10*THREAD_SLEEP)
+    time.sleep(THREAD_SLEEP)
     
     #continuously plot the map, targets and plan (once per second)
     fig, (ax, bx) = plt.subplots(nrows=2, ncols=1, figsize=(10,25))
@@ -461,17 +504,25 @@ if __name__ == "__main__":
         ex0.gridmap.plot(ax)
         ex0.gridmap_inflated.plot(bx)
         
-        if ex0.frontiers != None:
-            for frontier in ex0.frontiers: #frontiers
-                if type(frontier) != Pose:
-                    frontier = frontier[0]
+        if ex0.frontiers is not None:
+            for frontier in ex0.frontiers: 
+                '''if type(frontier) != Pose:
+                    frontier = frontier[0]'''
                 ax.scatter(frontier.position.x, frontier.position.y,c='red')
-        
-        if ex0.path is not None: #print path points
+                
+        #print simplified path points
+        if ex0.path is not None and len(ex0.path.poses) > 0: 
             for pose in ex0.path.poses:
-                ax.scatter(pose.position.x, pose.position.y,c='green', s=50, marker='x')
+                ax.scatter(pose.position.x, pose.position.y,c='green', s=100, marker='x')
+                bx.scatter(pose.position.x, pose.position.y,c='green', s=100, marker='x')
+            
+        #print the whole path as connected points
+        if len(ex0.path_to_draw.poses) > 0:
+            ex0.path_to_draw.plot(ax=ax, style = 'point')
+            ex0.path_to_draw.plot(ax=bx, style = 'point')
+            
         
-        # add current robot's pose
+        # draw current robot's pose
         ax.scatter(ex0.robot.odometry_.pose.position.x, ex0.robot.odometry_.pose.position.y,c='blue', s = 200)
         bx.scatter(ex0.robot.odometry_.pose.position.x, ex0.robot.odometry_.pose.position.y,c='blue', s = 200)
         
@@ -481,6 +532,6 @@ if __name__ == "__main__":
         plt.show()
     
         #to throttle the plotting pause for 1s
-        plt.pause(THREAD_SLEEP)
+        plt.pause(0.3)
     ex0.__del__()
     
