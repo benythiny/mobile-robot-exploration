@@ -564,7 +564,7 @@ class Communication():
         message = "Hello, robot!"
         self.client_socket.send(message.encode()) 
         while True:
-            time.sleep(0.5)
+            time.sleep(0.1)
             
             if self.server:
                 if ex0 is not None and ex0.gridmap is not None and ex1 is not None:
@@ -614,7 +614,7 @@ class Communication():
                     self.client_socket.send(message.encode()) 
             else:
                 
-                if ex0 is not None:
+                if ex0 is not None and ex0.gridmap is not None:
                     
                     if ex0.current_goal is not None:
                         goal_valid = True
@@ -627,7 +627,8 @@ class Communication():
                         goal_position = [0,0]
                         goal_orientation = [0,0,0,0]
                         
-                    message = {"goal_valid" : goal_valid,
+                    message = {"map" : ex0.gridmap.data.tolist(),
+                               "goal_valid" : goal_valid,
                                "goal_position" : goal_position,
                                "goal_orientation" : goal_orientation}
                     
@@ -640,12 +641,13 @@ class Communication():
         received_data = self.client_socket.recv(4000)
         print(received_data.decode())
         while True:
-            time.sleep(0.5)
+            time.sleep(0.1)
             if self.server:
-                received_data = self.client_socket.recv(1024)
-                print(time.strftime("%H:%M:%S"), "Received: ", received_data)
+                received_data = self.client_socket.recv(200000)
+                #print(time.strftime("%H:%M:%S"), "Received: ", received_data)
                 try:
                     received_data = json.loads(received_data)
+                    ex0.gridmap.data = np.array(received_data['map'])
                     global ex1
                     if ex1 is not None:
                         if received_data['goal_valid']:
@@ -663,14 +665,14 @@ class Communication():
                     print(time.strftime("%H:%M:%S"), "Couldnt decode json")
                     
             else:
-                received_data = self.client_socket.recv(150000)
+                received_data = self.client_socket.recv(200000)
                 #print(time.strftime("%H:%M:%S"), "Received: ", received_data)
                 try:
                     received_data = json.loads(received_data)
-                    global ex0
+                    #global ex0
                     if ex0 is not None:
                         ex0.gridmap.data = np.array(received_data['map'])
-                        print(time.strftime("%H:%M:%S"), "Received nav goal is : ", received_data['nav_goal_active'])
+                        #print(time.strftime("%H:%M:%S"), "Received nav goal is : ", received_data['nav_goal_active'])
                         
                         if received_data['odometry_valid']:
                             ex0.odometry = Odometry()
