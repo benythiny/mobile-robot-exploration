@@ -29,6 +29,13 @@ FRONTIER_DIST = 0.5
 
 PLANNING_METHOD = 3
 
+gridmap_common = OccupancyGrid()
+gridmap_common.resolution = 0.1
+gridmap_common.width = 100
+gridmap_common.height = 100
+gridmap_common.origin = Pose(Vector3(-5.0,-5.0,0.0), Quaternion(1,0,0,0))
+gridmap_common.data = 0.5*np.ones((gridmap_common.height*gridmap_common.width))
+
  
 class Explorer:
     """ Class to represent an exploration agent
@@ -52,12 +59,12 @@ class Explorer:
         self.goal_frontier = None
         
         #prepare the gridmap
-        self.gridmap = OccupancyGrid()
+        '''self.gridmap = OccupancyGrid()
         self.gridmap.resolution = 0.1
         self.gridmap.width = 100
         self.gridmap.height = 100
         self.gridmap.origin = Pose(Vector3(-5.0,-5.0,0.0), Quaternion(1,0,0,0))
-        self.gridmap.data = 0.5*np.ones((self.gridmap.height*self.gridmap.width))
+        self.gridmap.data = 0.5*np.ones((self.gridmap.height*self.gridmap.width))'''
         
         # map for planning with obstacles
         self.gridmap_inflated = OccupancyGrid()
@@ -165,17 +172,18 @@ class Explorer:
     def mapping(self):
         """ Mapping thread for fusing the laser scans into the grid map
         """
+        global gridmap_common
         while not self.stop:
             time.sleep(THREAD_SLEEP)
                
             #get the current laser scan and odometry and fuse them to the map
-            self.gridmap = self.explor.fuse_laser_scan(self.gridmap, self.robot.laser_scan_, self.robot.odometry_)
+            gridmap_common = self.explor.fuse_laser_scan(gridmap_common, self.robot.laser_scan_, self.robot.odometry_)
             
             #obstacle growing for the map used for collision avoidance
-            self.gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
+            self.gridmap_inflated = self.explor.grow_obstacles(gridmap_common, ROBOT_SIZE)
             
             # obstacle growing for the map used for path planning
-            self.gridmap_planning = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE + 0.1)
+            self.gridmap_planning = self.explor.grow_obstacles(gridmap_common, ROBOT_SIZE + 0.1)
  
     def goal_is_still_a_frontier(self):
         """
@@ -517,23 +525,27 @@ if __name__ == "__main__":
     planning_variant = args.variant
     print(time.strftime("%H:%M:%S"), "You chose the planning variant #",planning_variant)
     
-    #instantiate the robot
+    #instantiate the robots
     ex0 = Explorer(planning_var=planning_variant, robotID=0)
+    ex1 = Explorer(planning_var=planning_variant, robotID=1)
     
     #start the locomotion
     ex0.start()
+    ex1.start()
     time.sleep(THREAD_SLEEP)
     
     #continuously plot the map, targets and plan (once per second)
-    fig, (ax, bx) = plt.subplots(nrows=2, ncols=1, figsize=(10,25))
+    fig, (ax, bx, cx, dx) = plt.subplots(nrows=4, ncols=1, figsize=(25,25))
     plt.ion()
-    while not ex0.stop:
+    while not ex0.stop and not ex1.stop:
         plt.cla()
         ax.cla()
         bx.cla()
+        cx.cla()
+        dx.cla()
         
         #plot the map
-        ex0.gridmap.plot(ax)
+        gridmap_common.plot(ax)
         ex0.gridmap_inflated.plot(bx)
         
         # print all detected frontiers as red dots
@@ -557,6 +569,35 @@ if __name__ == "__main__":
         ax.scatter(ex0.robot.odometry_.pose.position.x, ex0.robot.odometry_.pose.position.y,c='blue', s = 200)
         bx.scatter(ex0.robot.odometry_.pose.position.x, ex0.robot.odometry_.pose.position.y,c='blue', s = 200)
         
+        """ __________________  """
+        
+        #plot the map
+        gridmap_common.plot(cx)
+        ex1.gridmap_inflated.plot(dx)
+        
+        # print all detected frontiers as red dots
+        if ex1.frontiers is not None:
+            for frontier in ex1.frontiers: 
+                cx.scatter(frontier.position.x, frontier.position.y,c='red')
+                
+        #print simplified path points
+        if ex1.path is not None and len(ex1.path.poses) > 0: 
+            for pose in ex1.path.poses:
+                cx.scatter(pose.position.x, pose.position.y,c='green', s=100, marker='x')
+                dx.scatter(pose.position.x, pose.position.y,c='green', s=100, marker='x')
+            
+        #print the whole path as connected points
+        if len(ex1.path_to_draw.poses) > 0:
+            ex1.path_to_draw.plot(ax=cx, style = 'point')
+            ex1.path_to_draw.plot(ax=dx, style = 'point')
+            
+        
+        # draw current robot's pose
+        cx.scatter(ex1.robot.odometry_.pose.position.x, ex1.robot.odometry_.pose.position.y,c='blue', s = 200)
+        dx.scatter(ex1.robot.odometry_.pose.position.x, ex1.robot.odometry_.pose.position.y,c='blue', s = 200)
+        
+        
+        
         plt.xlabel('x[m]')
         plt.ylabel('y[m]')
         ax.set_aspect('equal', 'box')
@@ -565,4 +606,5 @@ if __name__ == "__main__":
         #to throttle the plotting pause for 1s
         plt.pause(THREAD_SLEEP)
     ex0.__del__()
+    ex1.__del__()
     
