@@ -99,6 +99,7 @@ class Explorer:
         self.odometry = None
         self.laser_scan = None
         self.API_navigation_goal = None
+        self.current_goal = None
         
         
         """Connecting the simulator
@@ -528,6 +529,7 @@ class Explorer:
                     #fetch the new navigation goal                    
                     if len(self.path.poses) > 1:
                         nav_goal = self.path.poses[1]
+                        self.current_goal = nav_goal
                         #give it to the robot
                         if self.id == 0:
                             self.robot.goto(nav_goal)
@@ -565,9 +567,10 @@ class Communication():
             time.sleep(0.5)
             
             if self.server:
-                if ex0 is not None and ex0.gridmap is not None:
+                if ex0 is not None and ex0.gridmap is not None and ex1 is not None:
                     
-                    if ex1 is not None and ex1.odometry_ is not None:
+                    # fill the odometry data
+                    if ex1.odometry_ is not None:
                         odom_valid = True
                         odometry_position = [ex1.odometry_.pose.position.x, ex1.odometry_.pose.position.y,]
                         odometry_orientation = [ex1.odometry_.pose.orientation.x, ex1.odometry_.pose.orientation.y, 
@@ -577,15 +580,60 @@ class Communication():
                         odom_valid = False
                         odometry_position = [0, 0]
                         odometry_orientation = [0, 0, 0, 0]
+                        
+                    # fill the laser scan data
+                    if ex1.laser_scan_ is not None:
+                        scan_valid = True
+                        scan_msg = [ex1.laser_scan_.angle_increment,
+                                ex1.laser_scan_.angle_max, 
+                                ex1.laser_scan_.angle_min,
+                                ex1.laser_scan_.distances,
+                                ex1.laser_scan_.range_max,
+                                ex1.laser_scan_.range_min
+                        ]
+                    else:
+                        scan_valid = False
+                        scan_msg = [0, 0, 0, 0, 0, 0]
+                        
+                    # navigation goal of ex1
+                    
+                    if ex1.navigation_goal is not None:
+                        navigation_goal_active = True
+                    else:
+                        navigation_goal_active = False
                     
                     message = {"map" : ex0.gridmap.data.tolist(),
                                "odometry_valid" : odom_valid,
                                "odometry_position" : odometry_position,
-                               "odometry_orientation" : odometry_orientation}
+                               "odometry_orientation" : odometry_orientation,
+                               "scan_valid" : scan_valid,
+                               "scan_msg" : scan_msg,
+                               "nav_goal_active" : navigation_goal_active}
                     
                     message = json.dumps(message)
                     self.client_socket.send(message.encode()) 
-            
+            else:
+                
+                if ex0 is not None:
+                    
+                    if ex0.current_goal is not None:
+                        goal_valid = True
+                        goal_position = [ex0.current_goal.position.x, ex0.current_goal.position.y]
+                        goal_orientation = [ex0.current_goal.orientation.x, ex0.current_goal.orientation.y, 
+                                            ex0.current_goal.orientation.z,
+                                            ex0.current_goal.orientation.w]
+                    else:
+                        goal_valid = False
+                        goal_position = [0,0]
+                        goal_orientation = [0,0,0,0]
+                        
+                    message = {"goal_valid" : goal_valid,
+                               "goal_position" : goal_position,
+                               "goal_orientation" : goal_orientation}
+                    
+                message = json.dumps(message)
+                self.client_socket.send(message.encode()) 
+                
         
     def receive_socket(self):
         print(time.strftime("%H:%M:%S"), "Socket receive thread started")
@@ -593,15 +641,36 @@ class Communication():
         print(received_data.decode())
         while True:
             time.sleep(0.5)
-            if not self.server:
-                received_data = self.client_socket.recv(120000)
+            if self.server:
+                received_data = self.client_socket.recv(1024)
                 print(time.strftime("%H:%M:%S"), "Received: ", received_data)
+                try:
+                    received_data = json.loads(received_data)
+                    global ex1
+                    if ex1 is not None:
+                        if received_data['goal_valid']:
+                            goal = Pose()
+                            goal.position.x = received_data['goal_position'][0]
+                            goal.position.y = received_data['goal_position'][1]
+                            
+                            goal.orientation.x = received_data['goal_orientation'][0]
+                            goal.orientation.y = received_data['goal_orientation'][1]
+                            goal.orientation.z = received_data['goal_orientation'][2]
+                            goal.orientation.w = received_data['goal_orientation'][3]
+                            
+                            ex1.goto(goal)
+                except:
+                    print(time.strftime("%H:%M:%S"), "Couldnt decode json")
+                    
+            else:
+                received_data = self.client_socket.recv(150000)
+                #print(time.strftime("%H:%M:%S"), "Received: ", received_data)
                 try:
                     received_data = json.loads(received_data)
                     global ex0
                     if ex0 is not None:
                         ex0.gridmap.data = np.array(received_data['map'])
-                        #print(time.strftime("%H:%M:%S"), "Received: ", received_data['map'])
+                        print(time.strftime("%H:%M:%S"), "Received nav goal is : ", received_data['nav_goal_active'])
                         
                         if received_data['odometry_valid']:
                             ex0.odometry = Odometry()
@@ -612,6 +681,25 @@ class Communication():
                             ex0.odometry.pose.orientation.y = received_data['odometry_orientation'][1]
                             ex0.odometry.pose.orientation.z = received_data['odometry_orientation'][2]
                             ex0.odometry.pose.orientation.w = received_data['odometry_orientation'][3]
+                        
+                        if received_data['scan_msg']:
+                            ex0.laser_scan = LaserScan()
+                            ex0.laser_scan.angle_increment = received_data['scan_msg'][0]
+                            ex0.laser_scan.angle_max = received_data['scan_msg'][1]
+                            ex0.laser_scan.angle_min = received_data['scan_msg'][2]
+                            ex0.laser_scan.distances = received_data['scan_msg'][3]
+                            ex0.laser_scan.range_max = received_data['scan_msg'][4]
+                            ex0.laser_scan.range_min = received_data['scan_msg'][5]
+                            
+                            if not isinstance(ex0.laser_scan.distances, list):
+                                ex0.laser_scan.distances = []
+                            
+                        if received_data['nav_goal_active']:
+                            ex0.API_navigation_goal = True
+                        else:
+                            ex0.API_navigation_goal = None
+                            
+                
                 except:
                     print(time.strftime("%H:%M:%S"), "Couldnt decode json")
                     #print(received_data.decode())
