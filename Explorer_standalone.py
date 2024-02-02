@@ -100,6 +100,8 @@ class Explorer:
         self.laser_scan = None
         self.API_navigation_goal = None
         self.current_goal = None
+        self.collision_on_path = False
+        self.other_robot_pos = None
         
         
         """Connecting the simulator
@@ -193,6 +195,8 @@ class Explorer:
     def __del__(self):
         if self.id == 0:
             #turn off the robot
+            self.robot.navigation_goal = None
+            time.sleep(0.2)
             self.robot.stop_navigation()
             self.robot.turn_off()
  
@@ -220,11 +224,20 @@ class Explorer:
             #get the current laser scan and odometry and fuse them to the map
             self.gridmap = self.explor.fuse_laser_scan(self.gridmap, laser_scan, odometry)
             
+            gridmap_with_other_robot = copy.deepcopy(self.gridmap)
+            # if the other's robot position is known
+            if self.other_robot_pos is not None:
+                x, y = self.other_robot_pos
+                #print(time.strftime("%H:%M:%S"),"other_robot_pos at ", x, y)
+                [y, x] = ex0.explor.world_to_map(ex0.gridmap, np.array([y, x]))
+                gridmap_with_other_robot.data[y * self.gridmap.width + x] = 1
+                
+            
             #obstacle growing for the map used for collision avoidance
-            self.gridmap_inflated = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE)
+            self.gridmap_inflated = self.explor.grow_obstacles(gridmap_with_other_robot, ROBOT_SIZE)
             
             # obstacle growing for the map used for path planning
-            self.gridmap_planning = self.explor.grow_obstacles(self.gridmap, ROBOT_SIZE + 0.1)
+            self.gridmap_planning = self.explor.grow_obstacles(gridmap_with_other_robot, ROBOT_SIZE + 0.1)
  
     def goal_is_still_a_frontier(self):
         """
@@ -277,6 +290,7 @@ class Explorer:
         """
         # check if there ane no new obstacles on the planned path 
         collision = False
+        self.collision_on_path = False
         '''if self.id == 0:
             odometry = self.robot.odometry_'''
         odometry = self.odometry
@@ -318,11 +332,13 @@ class Explorer:
         
         if collision == True:
             # collision detected
-            print(time.strftime("%H:%M:%S"),"Collision detected on the planned path. Rerouting...")
+            
             self.path = None
+            self.collision_on_path = True
             
             if self.id == 0:
                 self.robot.navigation_goal = None
+            print(time.strftime("%H:%M:%S"),"Collision detected on the planned path. Rerouting...")
       
     def check_if_shorter_path_exists(self):
         """
@@ -519,7 +535,7 @@ class Explorer:
         print(time.strftime("%H:%M:%S"), "Trajectory thread started.")
         time.sleep(6*THREAD_SLEEP)
         while not self.stop:
-            time.sleep(THREAD_SLEEP)
+            time.sleep(2 * THREAD_SLEEP)
             
             if self.init_rotating:
                 continue
@@ -555,6 +571,7 @@ class Explorer:
 class Communication():
     
     def __init__(self, role_server=True):
+        self.stop = False
         self.server = role_server
         self.client_socket = None
         self.external_robot = None
@@ -563,8 +580,8 @@ class Communication():
         print(time.strftime("%H:%M:%S"), "Socket send thread started")
         message = "Hello, robot!"
         self.client_socket.send(message.encode()) 
-        while True:
-            time.sleep(0.1)
+        while not self.stop:
+            time.sleep(0.3)
             
             if self.server:
                 if ex0 is not None and ex0.gridmap is not None and ex1 is not None:
@@ -576,6 +593,9 @@ class Communication():
                         odometry_orientation = [ex1.odometry_.pose.orientation.x, ex1.odometry_.pose.orientation.y, 
                                                 ex1.odometry_.pose.orientation.z,
                                                 ex1.odometry_.pose.orientation.w]
+                        
+                        ex0.other_robot_pos = odometry_position
+                        
                     else:
                         odom_valid = False
                         odometry_position = [0, 0]
@@ -601,6 +621,13 @@ class Communication():
                         navigation_goal_active = True
                     else:
                         navigation_goal_active = False
+                        
+                    if ex0.odometry is not None:
+                        other_robot_pos_valid = True
+                        other_robot_pos = [ex0.odometry.pose.position.x, ex0.odometry.pose.position.y]
+                    else:
+                        other_robot_pos_valid = False
+                        other_robot_pos = [0, 0]
                     
                     message = {"map" : ex0.gridmap.data.tolist(),
                                "odometry_valid" : odom_valid,
@@ -608,7 +635,9 @@ class Communication():
                                "odometry_orientation" : odometry_orientation,
                                "scan_valid" : scan_valid,
                                "scan_msg" : scan_msg,
-                               "nav_goal_active" : navigation_goal_active}
+                               "nav_goal_active" : navigation_goal_active,
+                               "other_robot_pos_valid" : other_robot_pos_valid,
+                               "other_robot_pos" : other_robot_pos}
                     
                     message = json.dumps(message)
                     self.client_socket.send(message.encode()) 
@@ -627,21 +656,29 @@ class Communication():
                         goal_position = [0,0]
                         goal_orientation = [0,0,0,0]
                         
-                    message = {"map" : ex0.gridmap.data.tolist(),
+                    if ex0.terminate_counts < 1:
+                        stop = True
+                    else:
+                        stop = False
+                    message = {"stop": stop,
+                               "map" : ex0.gridmap.data.tolist(),
                                "goal_valid" : goal_valid,
                                "goal_position" : goal_position,
-                               "goal_orientation" : goal_orientation}
+                               "goal_orientation" : goal_orientation,
+                               "collision_on_path" : ex0.collision_on_path}
+                    
                     
                 message = json.dumps(message)
                 self.client_socket.send(message.encode()) 
                 
         
     def receive_socket(self):
+        global ex0
         print(time.strftime("%H:%M:%S"), "Socket receive thread started")
         received_data = self.client_socket.recv(4000)
         print(received_data.decode())
-        while True:
-            time.sleep(0.1)
+        while not self.stop:
+            time.sleep(0.3)
             if self.server:
                 received_data = self.client_socket.recv(200000)
                 #print(time.strftime("%H:%M:%S"), "Received: ", received_data)
@@ -661,6 +698,12 @@ class Communication():
                             goal.orientation.w = received_data['goal_orientation'][3]
                             
                             ex1.goto(goal)
+                            
+                        if received_data['collision_on_path']:
+                            ex1.navigation_goal = None
+                        
+                        ex0.stop = received_data['stop']
+                        
                 except:
                     print(time.strftime("%H:%M:%S"), "Couldnt decode json")
                     
@@ -673,6 +716,14 @@ class Communication():
                     if ex0 is not None:
                         ex0.gridmap.data = np.array(received_data['map'])
                         #print(time.strftime("%H:%M:%S"), "Received nav goal is : ", received_data['nav_goal_active'])
+                        
+                        if received_data['other_robot_pos_valid']:
+                            ex0.other_robot_pos = received_data['other_robot_pos']
+                            #print(time.strftime("%H:%M:%S"), "Received other_robot_pos : ", received_data['other_robot_pos'])
+                            '''x, y = received_data['other_robot_pos'][0], received_data['other_robot_pos'][1]
+                            [y, x] = ex0.explor.world_to_map(ex0.gridmap, np.array([y, x]))
+                            ex0.gridmap.data[y * ex0.gridmap.width + x] = 1'''
+                        
                         
                         if received_data['odometry_valid']:
                             ex0.odometry = Odometry()
@@ -700,10 +751,14 @@ class Communication():
                             ex0.API_navigation_goal = True
                         else:
                             ex0.API_navigation_goal = None
+                         
+                        
+                        # if received collision = true -> ex1.navigation_goal = None
                             
                 
                 except:
-                    print(time.strftime("%H:%M:%S"), "Couldnt decode json")
+                    continue
+                    #print(time.strftime("%H:%M:%S"), "Couldnt decode json")
                     #print(received_data.decode())
             
             
@@ -786,7 +841,7 @@ if __name__ == "__main__":
     #time.sleep(THREAD_SLEEP)
     
     #continuously plot the map, targets and plan (once per second)
-    fig, (ax, bx) = plt.subplots(nrows=2, ncols=1, figsize=(10,25))
+    fig, (ax, bx) = plt.subplots(nrows=2, ncols=1, figsize=(10,25), num=args.ID)
     plt.ion()
     while not ex0.stop:
         
@@ -845,5 +900,12 @@ if __name__ == "__main__":
     
         #to throttle the plotting pause for 1s
         plt.pause(THREAD_SLEEP)
+    
+    cmn.stop = True
+    if ex1 is not None:
+        ex1.navigation_goal = None
+        ex1.stop_navigation()
+        ex1.turn_off()
     ex0.__del__()
+    
     
