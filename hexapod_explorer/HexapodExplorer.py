@@ -56,16 +56,7 @@ class HexapodExplorer:
  
         grid_map_update = self.filter_scan_msgs(laser_scan, current_x, current_y, current_ori, grid_map)
  
-        '''
-        #add points to map
-        # Calculate the flat indices for the valid points
-        flat_indices = points[:, 1] * grid_map.height + points[:, 0]
- 
-        # Assign the value 1 to the valid points in the modified_grid_map
-        grid_map_update.data[flat_indices] = 1
-        '''
-        # TODO:[t1d_map] fuse the correctly aligned laser data into the probabilistic occupancy grid map
- 
+        
         return grid_map_update
  
     def filter_scan_msgs(self, scan_msg, current_x, current_y, current_ori, grid_map):
@@ -95,16 +86,6 @@ class HexapodExplorer:
         xy_projections[:, 0] = current_y + distances * np.sin(current_ori + obs_angles)
  
         # 3. Transfer the points from the world coordinates to the map coordinates
-        '''
-        resolution = grid_map.resolution
- 
-        origin_x = grid_map.origin.position.x
-        origin_y = grid_map.origin.position.y
- 
-        origin_xy = np.array([origin_x, origin_y])
- 
-        m = np.round((xy_projections - origin_xy) / resolution)
-        '''
  
         m = self.world_to_map(grid_map, xy_projections)
  
@@ -117,8 +98,7 @@ class HexapodExplorer:
         # Filter the coordinates using the boolean mask
         laser_scan_points_map = m[within_map].astype(np.int32)
  
-        # 4.
-        # get the position of the robot in the map coordinates
+        # 4. get the position of the robot in the map coordinates
         odom_map = self.world_to_map(grid_map, np.array([current_y, current_x]))
  
         free_points = []
@@ -128,8 +108,7 @@ class HexapodExplorer:
             pt = tuple(pt)
             # raytrace the points
             pts = self.bresenham_line(odom_map, pt)
-            #TODO: add check that there are no collisions in the line
- 
+        
             # save the coordinate of free space cells
             free_points.extend(pts[:-1])
             # save the coordinate of occupied cell
@@ -196,12 +175,7 @@ class HexapodExplorer:
         origin_xy = np.array([origin_x, origin_y])
  
         world_coords = (map_coords + 0.5) * resolution + origin_xy
-        '''
-        new_x = (map_coords[0] + 0.5) * resolution + origin_x
-        new_y = (map_coords[1] + 0.5) * resolution + origin_y
- 
-        world_coords = (new_x, new_y)
-        '''
+        
         return world_coords
  
     def bresenham_line(self, start, goal):
@@ -254,7 +228,6 @@ class HexapodExplorer:
         if grid_map is None:
             return None
  
-        # TODO:[t1e_expl] find free-adges and cluster the frontiers
         h = grid_map.height
         w = grid_map.width
         grid_data = grid_map.data.reshape((h, w))
@@ -287,42 +260,36 @@ class HexapodExplorer:
  
         # Free-edge centroids
         free_cells = []
-        '''
-        """
-        f1 feature
-        """
+           
+        
         for label in range(1, num_labels + 1):
             # Extract the coordinates of the labeled region (connected component)
             region = np.argwhere(labeled_image == label)
- 
+            
+            '''
+            """
+            f1 task 
+            """
             # Calculate the centroid as the mean of x and y coordinates
             centroid_x = np.mean(region[:, 1])
             centroid_y = np.mean(region[:, 0])
             cell = self.map_to_world(grid_map, np.array([centroid_y, centroid_x]))
             free_cells.append(Pose(Vector3(cell[1], cell[0], 0), Quaternion(1, 0, 0, 0)))
-         '''   
-        """
-        f2 feature
-        """
-        for label in range(1, num_labels + 1):
-            # Extract the coordinates of the labeled region (connected component)
-            region = np.argwhere(labeled_image == label)
-            f = len(region)
+            '''
             
-            D = LASER_MAX_RANGE / grid_map.resolution
-            n_r = np.floor(f/D + 0.5) +1
+            """
+            f2 task 
+            """
+            
+            f = len(region) # number of frontier cells 
+            
+            D = LASER_MAX_RANGE / grid_map.resolution # sensor range in grid cell size
+            n_r = 1 + np.floor(f/D + 0.5) 
             kmeans = KMeans(n_clusters=int(n_r), max_iter=80, tol=1e-2, n_init=1).fit(region)
             for centroid in kmeans.cluster_centers_:
                 if grid_data[int(centroid[0]), int(centroid[1])] < 0.5:
                     cell = self.map_to_world(grid_map, np.array([centroid[0], centroid[1]]))
                     free_cells.append(Pose(Vector3(cell[1], cell[0], 0), Quaternion(1, 0, 0, 0)))
-        '''
-         
-        for coord in free_coordinates:
-            if grid_data[coord[0], coord[1]] < 0.5:
-                cell = self.map_to_world(grid_map, np.array(coord))
-                free_cells.append(Pose(Vector3(cell[1], cell[0], 0), Quaternion(1, 0, 0, 0)))
-        '''
  
         if len(free_cells) != 0:
             return free_cells
@@ -331,7 +298,7 @@ class HexapodExplorer:
  
     def find_inf_frontiers(self, grid_map):
         """Method to calculate the frontiers from the mutual information theory approach
-           f3 feature
+           f3 task
         Args:
             grid_map: OccupancyGrid - gridmap of the environment
         Returns:
@@ -342,7 +309,7 @@ class HexapodExplorer:
         angle_coef = 2*math.pi/directions
         frontiers_weighted = []
         
-        # Find free frontiers
+        # Find free edge frontiers
         frontiers = self.find_free_edge_frontiers(grid_map)
         if frontiers is None:
             return None
@@ -367,10 +334,10 @@ class HexapodExplorer:
             I_action = 0
             frontier_cell = self.world_to_map(grid_map, np.array([frontier.position.y, frontier.position.x]))
 
-            # Calculate information gain along 8 beams from the frontier
+            # Calculate information gain along 8 directions from the frontier
             for i in range(directions):
-                dir.position.y = LASER_MAX_RANGE * math.sin(i * angle_coef) + frontier.position.y
                 dir.position.x = LASER_MAX_RANGE * math.cos(i * angle_coef) + frontier.position.x
+                dir.position.y = LASER_MAX_RANGE * math.sin(i * angle_coef) + frontier.position.y
                 dir_end_world = np.array([dir.position.x, dir.position.y])
                 dir_end_cell = self.world_to_map(grid_map, dir_end_world)
                 dir_line = self.bresenham_line(frontier_cell, dir_end_cell)
@@ -382,7 +349,7 @@ class HexapodExplorer:
                     if y < 0 or y >= grid_map.height:
                         break
                     if map2d[y, x] == 1:
-                        break    
+                        break 
                     I_action += H[y, x]
                     
             # only add those frontiers that are on the free cells
@@ -395,7 +362,6 @@ class HexapodExplorer:
         sorted_frontiers = [lis[0] for lis in sorted_data]
 
         return sorted_frontiers
- 
  
     def grow_obstacles(self, grid_map_original, robot_size):
         """ Method to grow the obstacles to take into account the robot embodiment
@@ -427,77 +393,6 @@ class HexapodExplorer:
  
         return grid_map
  
-    '''
-    def plan_path(self, grid_map, start, goal):
-        """ Method to plan the path from start to the goal pose on the grid
-        Args:
-            grid_map: OccupancyGrid - gridmap for obstacle growing
-            start: Pose - robot start pose
-            goal: Pose - robot goal pose
-        Returns:
-            path: Path - path between the start and goal Pose on the map
-        """
- 
-        h = grid_map.height
-        w = grid_map.width
-        res = grid_map.resolution
- 
-        path = Path()
-        # Add the start pose
-        path.poses.append(start)
- 
-        # Convert the grid_map data to a NumPy array
-        grid_data = grid_map.data.reshape((h, w))
- 
-        # Define 8 possible movement directions (8-neighborhood)
-        directions = [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (-1, -1), (1, -1)]
- 
-        # Create a list of open cells to explore
-        open_cells = [(0, (start.position.x, start.position.y))]
-        # Create a dictionary to store the cost to reach each cell
-        cell_costs = {(start.position.x, start.position.y): (0, (start.position.x, start.position.y))}
- 
-        while open_cells:
-            # Get the cell with the lowest cost from the open_cells list
-            cost, current = heappop(open_cells)
- 
-            # Check if we have reached the goal
-            if current == (goal.position.x, goal.position.y):
-                # Reconstruct the path
-                path.poses = [start]  # Reset the path
-                while current in cell_costs:
-                    path.poses.append(Pose(Vector3(current[0], current[1], 0), Quaternion(1, 0, 0, 0)))
-                    current = cell_costs[current][1]  # Get the previous cell
-                path.poses.append(goal)
- 
-                return path
- 
-            # Explore neighboring cells
-            for dx, dy in directions:
-                x, y = self.world_to_map(grid_map, np.array([current[0] + dx * res, current[1] + dy * res]))
-                x = int(x)
-                y = int(y)
- 
-                neighbor = (current[0] + dx * res, current[1] + dy * res)
- 
-                if 0 <= x < w and 0 <= y < h and grid_data[y][x] == 0:
-                    # Calculate the cost to reach the neighbor
-                    neighbor_cost = cell_costs[current][0] + 1  # Assuming uniform cost
- 
-                    if neighbor not in cell_costs or neighbor_cost < cell_costs[neighbor][0]:
-                        cell_costs[neighbor] = (neighbor_cost, current)
-                        heappush(open_cells, (
-                            neighbor_cost + self.heuristic(neighbor, (goal.position.x, goal.position.y)), neighbor))
- 
-        # If no path is found, return None
-        return None
- 
-    def heuristic(self, current, goal):
-        """ A simple Euclidean distance heuristic for A* """
-        return np.linalg.norm(np.array([current[0], current[1]]) - np.array([[goal[0], goal[1]]]))
- 
-    '''
- 
     def plan_path(self, grid_map, start, goal):
         """ Method to plan the path from start to the goal pose on the grid
         Args:
@@ -527,23 +422,18 @@ class HexapodExplorer:
         # find path with A*
         found_path = astar(grid_data, map_start, map_goal)
         
-        
- 
         if found_path is None:
-            # print("No path was found.")
             return None
         else:
             for point in found_path:
                 [new_x, new_y] = self.map_to_world(grid_map, np.array(point))
                 new_point = Pose(Vector3(new_y, new_x, 0), Quaternion(0, 0, 0, 0))
                 path.poses.append(new_point)
-        #path.poses[0] = goal
-        #path.poses[-1] = start
+
         path.poses.append(start)
         path.poses = path.poses[::-1]
  
         return path
- 
 
     def collision_on_path(self, map, line):
         h = map.height
@@ -591,13 +481,12 @@ class HexapodExplorer:
                 b_end = self.world_to_map(grid_map, np.array([pose.position.y, pose.position.x]))
                 b_start = self.world_to_map(grid_map, np.array([path_simplified.poses[-1].position.y, path_simplified.poses[-1].position.x]))
                 b_line = self.bresenham_line(b_start, b_end)
-                #collision = self.collision_on_path(grid_map, b_line)
                 
                 collision = False
                 for (y, x) in b_line: #check for collision
-                    if map2d[y,x] > 0.5: # this is correct!
+                    if map2d[y,x] > 0.5: 
                         collision = True
-                #if collision == False or len(b_line) < 2:
+                        
                 if collision == False:
                 
                     previous_pose = pose
@@ -613,45 +502,8 @@ class HexapodExplorer:
                     break
             if len(b_line)==1 and pose != goal:
                 return None
-        return path_simplified
+        return path_simplified        
             
-            
-    def simplify_path_old(self, grid_map, path_orig):
-        """ Method to simplify the found path on the grid
-        Args:
-            grid_map: OccupancyGrid - gridmap for obstacle growing
-            path: Path - path to be simplified
-        Returns:
-            path_simple: Path - simplified path
-        """
-        if grid_map is None or path_orig is None:
-            return None
- 
-        path_simplified = Path()
-        # add the start pose
-        path_simplified.poses.append(path_orig.poses[0])
- 
-        # iterate through the path and simplify the path
-        goal = path_orig.poses[-1]
-        previous_pose = path_orig.poses[0]
-        previos_outer_pose = path_orig.poses[0]
- 
-        for new_pose in path_orig.poses[1:]:
-            b_end = self.world_to_map(grid_map, np.array([new_pose.position.y, new_pose.position.x]))
-            b_start = self.world_to_map(grid_map, np.array([previos_outer_pose.position.y, previos_outer_pose.position.x]))
-            b_line = self.bresenham_line(b_start, b_end)
-            collision = self.collision_on_path(grid_map, b_line)
- 
-            if not collision:
-                previous_pose = new_pose
-            else:
-                path_simplified.poses.append(previous_pose)
-                previos_outer_pose = previous_pose
-                previous_pose = new_pose
- 
-        path_simplified.poses.append(goal)
-        return path_simplified
-    
     def sort_frontiers_by_dist(self, gridmap_processed, start, frontiers):
         frontiers_distances = []
         
@@ -701,16 +553,13 @@ class HexapodExplorer:
 def heuristic(a, b):
     return np.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
  
- 
-##############################################################################
- 
-# path finding function
-# credits to: https://www.analytics-link.com/post/2018/09/14/applying-the-a-path-finding-algorithm-in-python-part-1-2d-square-Grid
- 
-##############################################################################
- 
- 
 def astar(array, start, goal):
+    ##############################################################################
+ 
+    # path finding function
+    # credits to: https://www.analytics-link.com/post/2018/09/14/applying-the-a-path-finding-algorithm-in-python-part-1-2d-square-Grid
+    
+    ##############################################################################
     neighbors = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
  
     close_set = set()

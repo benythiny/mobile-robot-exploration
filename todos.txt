@@ -5,31 +5,34 @@ x 2. only plan a new path when the previous one is already finished -> Done
 
 x 3. only show feasible frontiers -> Done
 
-4. fix collisions with objects that were not taken into
+x 4. fix collisions with objects that were not taken into
 consideration while planning the path -> reactive goto?
 x -> or simply check if there is collision between current position and next goal (bresen line)
 
 x 5. stop the path if the frontier is not there anymore or is in obstacle
 
-6. Fix rotations of the robot when it stands still
+x 6. Fix rotations of the robot when it stands still
 
-7. REWRITE goto(self, goal, odometry, collision) !
+x 7. REWRITE goto(self, goal, odometry, collision) !
 
-8. maybe after deceting the collision, remove this frontier and plan the path to another one.
+x 8. maybe after deceting the collision, remove this frontier and plan the path to another one.
 On other hand, if it is not possible to plan the path, the next frontier would be considered
 
-9. change constants! 
+x 9. change constants! 
 
-10. implement timeout for path simplification
+x 10. implement timeout for path simplification
 
-11. Move init_mapping somewhere else
+x 11. Move init_mapping somewhere else
 
 12. Consider removing oscilations in p2 planning by introducing a weighting function (dist to utility value)
 
-13. при поиске фронтиров сразу прокладывать к ним дорогу, чтобы убрать недосягаемые
+- 13. при поиске фронтиров сразу прокладывать к ним дорогу, чтобы убрать недосягаемые
 
-14. дорога не оптимизируется нормально, если путь начинается из препятствия. например
+x 14. дорога не оптимизируется нормально, если путь начинается из препятствия. например
 переделывать дорогу по попути, если она слишкои длинная.
+
+x change the printing style
+
 
 Questions:
 1. are collisions toleretated?

@@ -1,5 +1,4 @@
 matplotlib==3.8.2
 numpy==1.26.3
 scikit-learn==1.4.0
-rich
 scikit-image==0.22.0
