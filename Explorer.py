@@ -28,15 +28,13 @@ from lkh.invoke_LKH import solve_TSP
 
 import argparse
 
-ROBOT_SIZE = 0.4
-THREAD_SLEEP = 0.4
-FRONTIER_DIST = 0.5
+ROBOT_SIZE     = 0.4
+THREAD_SLEEP   = 0.4
+FRONTIER_DIST  = 0.5
 
-PLANNING_METHOD = 3
+SOCKET_PORT    = 32000
 
-SOCKET_PORT = 32000
-
-GRIDMAP_WIDTH = 100
+GRIDMAP_WIDTH  = 100
 GRIDMAP_HEIGHT = 100
 
 ex0 = None
@@ -107,7 +105,7 @@ class Explorer:
         """
         
         if self.id == 0:
-            #instantiate the robot
+            #instantiate the robot if the single robot exploration is chosen
             self.robot = HexapodRobot.HexapodRobot(robotID)
         #and the explorer
         self.explor = HexapodExplorer.HexapodExplorer()
@@ -164,6 +162,8 @@ class Explorer:
             self.robot.turn_off()
  
     def update_from_API(self):
+        """ Thread for receiving actual data from CoppeliaSim API
+        """
         print(time.strftime("%H:%M:%S"), "| id:", self.id, "| ", "Started API updating thread")
         while not self.stop:
             time.sleep(0.1)
@@ -179,6 +179,8 @@ class Explorer:
         while not self.stop:
             time.sleep(THREAD_SLEEP)
             
+            #get the current laser scan and odometry and fuse them to the map
+            
             self.lock_odometry.acquire()
             odometry = self.odometry
             self.lock_odometry.release()
@@ -187,7 +189,7 @@ class Explorer:
             laser_scan = self.laser_scan
             self.lock_laser_scan.release()
                
-            #get the current laser scan and odometry and fuse them to the map
+            #get the gridmap
             
             ex0.lock_gridmap.acquire()
             grid_map = self.gridmap

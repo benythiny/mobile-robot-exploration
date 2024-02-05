@@ -29,6 +29,8 @@ import heapq
 import skimage.measure as skm
  
 LASER_MAX_RANGE = 10.0
+
+F1 = True
  
 class HexapodExplorer:
  
@@ -266,31 +268,32 @@ class HexapodExplorer:
             # Extract the coordinates of the labeled region (connected component)
             region = np.argwhere(labeled_image == label)
             
-            '''
-            """
-            f1 task 
-            """
-            # Calculate the centroid as the mean of x and y coordinates
-            centroid_x = np.mean(region[:, 1])
-            centroid_y = np.mean(region[:, 0])
-            cell = self.map_to_world(grid_map, np.array([centroid_y, centroid_x]))
-            free_cells.append(Pose(Vector3(cell[1], cell[0], 0), Quaternion(1, 0, 0, 0)))
-            '''
-            
-            """
-            f2 task 
-            """
-            
-            f = len(region) # number of frontier cells 
-            
-            D = LASER_MAX_RANGE / grid_map.resolution # sensor range in grid cell size
-            n_r = 1 + np.floor(f/D + 0.5) 
-            kmeans = KMeans(n_clusters=int(n_r), max_iter=80, tol=1e-2, n_init=1).fit(region)
-            for centroid in kmeans.cluster_centers_:
-                if grid_data[int(centroid[0]), int(centroid[1])] < 0.5:
-                    cell = self.map_to_world(grid_map, np.array([centroid[0], centroid[1]]))
-                    free_cells.append(Pose(Vector3(cell[1], cell[0], 0), Quaternion(1, 0, 0, 0)))
- 
+            if F1:
+                
+                """
+                f1 task 
+                """
+                # Calculate the centroid as the mean of x and y coordinates
+                centroid_x = np.mean(region[:, 1])
+                centroid_y = np.mean(region[:, 0])
+                cell = self.map_to_world(grid_map, np.array([centroid_y, centroid_x]))
+                free_cells.append(Pose(Vector3(cell[1], cell[0], 0), Quaternion(1, 0, 0, 0)))
+                
+            else:
+                """
+                f2 task 
+                """
+                
+                f = len(region) # number of frontier cells 
+                
+                D = LASER_MAX_RANGE / grid_map.resolution # sensor range in grid cell size
+                n_r = 1 + np.floor(f/D + 0.5) 
+                kmeans = KMeans(n_clusters=int(n_r), max_iter=20, tol=1e-2).fit(region)
+                for centroid in kmeans.cluster_centers_:
+                    if grid_data[int(centroid[0]), int(centroid[1])] < 0.5:
+                        cell = self.map_to_world(grid_map, np.array([centroid[0], centroid[1]]))
+                        free_cells.append(Pose(Vector3(cell[1], cell[0], 0), Quaternion(1, 0, 0, 0)))
+    
         if len(free_cells) != 0:
             return free_cells
         else:
