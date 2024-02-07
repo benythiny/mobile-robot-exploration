@@ -94,6 +94,7 @@ class Explorer:
         self.current_goal = None
         self.collision_on_path = False
         self.other_robot_pos = None
+        self.other_robot_goal = None
         
         #mutex for access to variables exchanged via communication  
         self.lock_gridmap    = thread.Lock()
@@ -155,7 +156,6 @@ class Explorer:
     def __del__(self):
         if self.id == 0:
             #turn off the robot
-            #TODO: check one more time
             self.robot.navigation_goal = None
             time.sleep(0.2)
             self.robot.stop_navigation()
@@ -424,7 +424,7 @@ class Explorer:
                     for row in range(num_locations):
                         for col in range(1, num_locations):
                             current_path = self.explor.plan_path(self.gridmap_planning, all_locations[row], all_locations[col])
-                            if current_path is None:
+                            if current_path is None or len(current_path.poses) == 0:
                                 value = 10000
                             else:
                                 value = len(current_path.poses)
@@ -441,17 +441,9 @@ class Explorer:
                         continue
                     
                     # 3. assign the first frontier of the tour as the next exploration goal
-                    #TODO: remove this try except
-                    try:
-                        self.goal_frontier = all_locations[TSP_result[1]]
-                    except:
-                        print(time.strftime("%H:%M:%S"), "| id:", self.id, "| ","EXCEPTION OCCURED")
-                        print(time.strftime("%H:%M:%S"), "| id:", self.id, "| ","All locations: ", all_locations)
-                        print(time.strftime("%H:%M:%S"), "| id:", self.id, "| ",TSP_result)
-                        self.terminate_counts -= 1
-                        print(time.strftime("%H:%M:%S"), "| id:", self.id, "| ","Counts before termination: ", self.terminate_counts)
-                        print(time.strftime("%H:%M:%S"), "| id:", self.id, "| ","TSP solution was not found.")
-                        continue
+                    
+                    self.goal_frontier = all_locations[TSP_result[1]]
+                    
                 
                 # 4. plan path to this frontier
                 current_path = self.explor.plan_path(self.gridmap_planning, start, self.goal_frontier)
@@ -482,6 +474,13 @@ class Explorer:
                 # 2) has the biggest info gain in case of p2
                 # if the path couldn't be planned, go to the next one
                 for f in self.frontiers:
+                    # if the other robot already goes to this frontier, pick the next one
+                    if self.other_robot_goal is not None:
+                        dist = (f.position - self.other_robot_goal.position).norm()
+                        if dist < 0.5:
+                            print(time.strftime("%H:%M:%S"), "| id:",  self.id, "| ","The other robot already picked this goal, trying another frontier.")
+                            continue
+                        
                     self.goal_frontier = f
                     self.path   = self.explor.plan_path(self.gridmap_planning, start, self.goal_frontier) 
                     simple_path = self.explor.simplify_path(self.gridmap_planning, self.path)
@@ -595,6 +594,13 @@ class TCP_Server():
                 
             ex0.lock_odometry.release()
             
+            if ex0.goal_frontier is not None:
+                other_robot_goal_valid = True
+                other_robot_goal = [ex0.goal_frontier.position.x, ex0.goal_frontier.position.y]
+            else:
+                other_robot_goal_valid = False
+                other_robot_goal = [0, 0]
+            
             ex0.lock_gridmap.acquire()
             cur_map = ex0.gridmap.data.tolist()
             ex0.lock_gridmap.release()
@@ -608,7 +614,9 @@ class TCP_Server():
                         "scan_msg" : scan_msg,
                         "nav_goal_active" : navigation_goal_active,
                         "other_robot_pos_valid" : other_robot_pos_valid,
-                        "other_robot_pos" : other_robot_pos}
+                        "other_robot_pos" : other_robot_pos,
+                        "other_robot_goal_valid" : other_robot_goal_valid,
+                        "other_robot_goal" : other_robot_goal}
             
             message = json.dumps(message)
             
@@ -658,6 +666,13 @@ class TCP_Server():
                     if received_data['collision_on_path']:
                         ex1.navigation_goal = None
                         
+                    if received_data['other_robot_goal_valid']:
+                        ex0.other_robot_goal = Pose()
+                        ex0.other_robot_goal.position.x = received_data['other_robot_goal'][0]
+                        ex0.other_robot_goal.position.y = received_data['other_robot_goal'][1]
+                    else:
+                        ex0.other_robot_goal = None
+                        
                     ex0.stop = received_data['stop']
                     
             except:
@@ -674,6 +689,8 @@ class TCP_Server():
 
         # Listen for incoming connections
         server_socket.listen()
+        
+        print(time.strftime("%H:%M:%S"), "Waiting for the second robot to join...")
 
         # Accept a connection
         self.client_socket, client_address = server_socket.accept()
@@ -736,6 +753,13 @@ class TCP_Client():
             else:
                 stop = False
                 
+            if ex0.goal_frontier is not None:
+                other_robot_goal_valid = True
+                other_robot_goal = [ex0.goal_frontier.position.x, ex0.goal_frontier.position.y]
+            else:
+                other_robot_goal_valid = False
+                other_robot_goal = [0, 0]
+                
             ex0.lock_gridmap.acquire()
             cur_map = ex0.gridmap.data.tolist()
             ex0.lock_gridmap.release()
@@ -746,7 +770,9 @@ class TCP_Client():
                         "goal_valid" : goal_valid,
                         "goal_position" : goal_position,
                         "goal_orientation" : goal_orientation,
-                        "collision_on_path" : ex0.collision_on_path}
+                        "collision_on_path" : ex0.collision_on_path,
+                        "other_robot_goal_valid" : other_robot_goal_valid,
+                        "other_robot_goal" : other_robot_goal}
             
             
             message = json.dumps(message)
@@ -756,6 +782,7 @@ class TCP_Client():
                 self.client_socket.send(message.encode()) 
             except:
                 print(time.strftime("%H:%M:%S"), "Couldn't send a message over the socket.")
+                ex0.stop = True
             
             if ex0.lock_gridmap.locked():
                 ex0.lock_gridmap.release() 
@@ -821,6 +848,13 @@ class TCP_Client():
                     ex0.API_navigation_goal = True
                 else:
                     ex0.API_navigation_goal = None 
+                    
+                if received_data['other_robot_goal_valid']:
+                    ex0.other_robot_goal = Pose()
+                    ex0.other_robot_goal.position.x = received_data['other_robot_goal'][0]
+                    ex0.other_robot_goal.position.y = received_data['other_robot_goal'][1]
+                else:
+                    ex0.other_robot_goal = None
                      
             except:
                  

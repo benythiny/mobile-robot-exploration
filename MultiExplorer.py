@@ -432,7 +432,7 @@ class MultiExplorer:
                     # if the other robot already goes to this frontier, pick the next one
                     if other_robot.goal_frontier is not None:
                         dist = (f.position - other_robot.goal_frontier.position).norm()
-                        if dist < 0.2:
+                        if dist < 0.5:
                             print(time.strftime("%H:%M:%S"), "| id:",  id, "| ","The other robot already picked this goal, trying another frontier.")
                             continue
                     
